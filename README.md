@@ -4,7 +4,7 @@ Tokio-CoAP
 [![Build Status](https://travis-ci.org/azdle/tokio-coap.svg?branch=master)](https://travis-ci.org/azdle/tokio-coap)
 [![Crates.io Link](http://meritbadge.herokuapp.com/tokio-coap)](https://crates.io/crates/tokio-coap)
 
-tokio-caop is a [CoAP](https://tools.ietf.org/html/rfc7252) protocol
+tokio-coap is a [CoAP](https://tools.ietf.org/html/rfc7252) protocol
 implementation built on top of the [tokio platform](https://tokio.rs/)
 in the [Rust programming language](https://rust-lang.org).
 
