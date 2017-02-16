@@ -10,6 +10,6 @@ built on top of tokio-core.
 """
 
 [dependencies]
-futures = "0.1"
-tokio-core = "0.1"
-env_logger = "0.3"
+futures = "*"
+tokio-core = "*"
+env_logger = "*"
