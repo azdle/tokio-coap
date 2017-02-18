@@ -157,6 +157,8 @@ impl Code {
 }
 
 pub mod option {
+    use std::borrow::Cow;
+
     #[derive(PartialEq, Eq, Debug)]
     pub enum Option {
         IfMatch(Vec<u8>),
@@ -246,26 +248,26 @@ pub mod option {
             }
         }
 
-        pub fn value_to_bytes(&self) -> Vec<u8> {
+        pub fn value_to_bytes(&self) -> Cow<[u8]> {
             match *self {
-                Option::IfMatch(ref v) => v.to_vec(),
-                Option::UriHost(ref s) => s.as_bytes().to_vec(),
-                Option::ETag(ref v) => v.to_vec(),
-                Option::IfNoneMatch => Vec::with_capacity(0),
-                Option::Observe(ref n) => Self::integer_to_bytes(*n as u64),
-                Option::UriPort(ref n) => Self::integer_to_bytes(*n as u64),
-                Option::LocationPath(ref s) => s.as_bytes().to_vec(),
-                Option::UriPath(ref s) => s.as_bytes().to_vec(),
-                Option::ContentFormat(ref n) => Self::integer_to_bytes(*n as u64),
-                Option::MaxAge(ref n) => Self::integer_to_bytes(*n as u64),
-                Option::UriQuery(ref s) => s.as_bytes().to_vec(),
-                Option::Accept(ref n) => Self::integer_to_bytes(*n as u64),
-                Option::LocationQuery(ref s) => s.as_bytes().to_vec(),
-                Option::ProxyUri(ref s) => s.as_bytes().to_vec(),
-                Option::ProxyScheme(ref s) => s.as_bytes().to_vec(),
-                Option::Size1(ref n) => Self::integer_to_bytes(*n as u64),
-                Option::NoResponse(ref n) => Self::integer_to_bytes(*n as u64),
-                Option::Unknown((_, ref v)) => v.to_vec(),
+                Option::IfMatch(ref v) => Cow::Borrowed(v),
+                Option::UriHost(ref s) => Cow::Borrowed(s.as_bytes()),
+                Option::ETag(ref v) => Cow::Borrowed(v),
+                Option::IfNoneMatch => Cow::Owned(Vec::with_capacity(0)),
+                Option::Observe(ref n) => Cow::Owned(Self::integer_to_bytes(*n as u64)),
+                Option::UriPort(ref n) => Cow::Owned(Self::integer_to_bytes(*n as u64)),
+                Option::LocationPath(ref s) => Cow::Borrowed(s.as_bytes()),
+                Option::UriPath(ref s) => Cow::Borrowed(s.as_bytes()),
+                Option::ContentFormat(ref n) => Cow::Owned(Self::integer_to_bytes(*n as u64)),
+                Option::MaxAge(ref n) => Cow::Owned(Self::integer_to_bytes(*n as u64)),
+                Option::UriQuery(ref s) => Cow::Borrowed(s.as_bytes()),
+                Option::Accept(ref n) => Cow::Owned(Self::integer_to_bytes(*n as u64)),
+                Option::LocationQuery(ref s) => Cow::Borrowed(s.as_bytes()),
+                Option::ProxyUri(ref s) => Cow::Borrowed(s.as_bytes()),
+                Option::ProxyScheme(ref s) => Cow::Borrowed(s.as_bytes()),
+                Option::Size1(ref n) => Cow::Owned(Self::integer_to_bytes(*n as u64)),
+                Option::NoResponse(ref n) => Cow::Owned(Self::integer_to_bytes(*n as u64)),
+                Option::Unknown((_, ref v)) => Cow::Borrowed(v),
             }
         }
 
@@ -589,7 +591,7 @@ impl Message {
 
         for option in &self.options {
             pkt.extend(option.build_header(&mut last_option_number));
-            pkt.extend(option.value_to_bytes());
+            pkt.extend(option.value_to_bytes().iter());
         }
 
         if self.payload.len() > 0 {
