@@ -16,6 +16,7 @@ pub enum Error {
     MessageFormat,
     InvalidToken,
     InvalidOptionNumber,
+    UnrecognizedCriticalOption, // TODO: use
 }
 
 #[derive(PartialEq, Eq, Debug)]
