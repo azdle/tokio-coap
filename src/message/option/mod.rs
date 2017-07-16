@@ -186,19 +186,19 @@ macro_rules! option {
 macro_rules! options {
     ( $( ($num: expr, $name: ident, $format: ident, $min: expr, $max: expr), )+ ) => {
         #[derive(Debug)]
-        pub enum OptionTypes {
+        pub enum OptionKind {
             $(
                 $name,
             )+
             Unknown(u16)
         }
 
-        pub fn from_raw(number: u16, v: &[u8]) -> Result<OptionTypes, ()> {
+        pub fn from_raw(number: u16, v: &[u8]) -> Result<OptionKind, ()> {
             Ok(match number {
                 $(
-                    $num => OptionTypes::$name,
+                    $num => OptionKind::$name,
                 )+
-                _ => OptionTypes::Unknown(number),
+                _ => OptionKind::Unknown(number),
             })
         }
 
