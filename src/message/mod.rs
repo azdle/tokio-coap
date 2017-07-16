@@ -232,6 +232,7 @@ impl Message {
 
             if pkt.len() >= i + (length as usize) {
                 options.push(option::Option::from_raw(option_number, &pkt[i..i+(length as usize)]));
+                //options.push(option::from_raw(option_number, &pkt[i..i+(length as usize)]));
             } else {
                 return Err(Error::MessageFormat);
             }

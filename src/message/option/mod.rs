@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::str;
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum Option {
@@ -21,6 +22,209 @@ pub enum Option {
     NoResponse(u8),
     Unknown((u16, Vec<u8>)),
 }
+
+trait OptionTr : Sized {
+    /// NOTE: This should be replaced with an associated const when they make it to stable.
+    fn number(&self) -> u16;
+
+    fn new() -> Self;
+
+    fn push_value_from_bytes(&mut self, bytes: &[u8]) -> Result<&mut Self, ()>;
+    fn pop_value_to_bytes(&mut self) -> ::std::option::Option<Cow<[u8]>>;
+}
+
+// fn get_number<T: OptionTr>(option: T) -> u16 {
+//     OptionTr::number(&option)
+// }
+
+/// This builds the type for each individual option.
+macro_rules! option {
+    ($num: expr, $name: ident, opaque, $min: expr, $max: expr) => {
+        #[derive(Debug)]
+        pub struct $name {
+            value: Vec<Vec<u8>>
+        }
+
+        impl OptionTr for $name {
+            fn number(&self) -> u16 {
+                $num
+            }
+
+            fn new() -> Self() {
+                $name{value: Vec::new()}
+            }
+
+            fn push_value_from_bytes(&mut self, bytes: &[u8]) -> Result<&mut Self, ()> {
+                if bytes.len() >= $min as usize && bytes.len() <= $max as usize {
+                    self.value.push(bytes.to_vec());
+                    Ok(self)
+                } else {
+                    Err(())
+                }
+            }
+
+            fn pop_value_to_bytes(&mut self) -> ::std::option::Option<Cow<[u8]>> {
+                self.value.pop().map(|value| Cow::Owned(value))
+            }
+        }
+    };
+
+    ($num: expr, $name: ident, string, $min: expr, $max: expr) => {
+        #[derive(Debug)]
+        pub struct $name {
+            value: Vec<String>
+        }
+
+        impl OptionTr for $name {
+            fn number(&self) -> u16 {
+                $num
+            }
+
+            fn new() -> Self() {
+                $name{value: Vec::new()}
+            }
+
+            fn push_value_from_bytes(&mut self, bytes: &[u8]) -> Result<&mut Self, ()> {
+                if bytes.len() >= $min as usize && bytes.len() <= $max as usize {
+                    self.value.push(str::from_utf8(bytes).or(Err(()))?.to_string());
+                    Ok(self)
+                } else {
+                    Err(())
+                }
+            }
+
+            fn pop_value_to_bytes(&mut self) -> ::std::option::Option<Cow<[u8]>> {
+                self.value.pop().map(|value| Cow::Owned(value.into_bytes()))
+            }
+        }
+    };
+
+    ($num: expr, $name: ident, empty, $min: expr, $max: expr) => {
+        #[derive(Debug)]
+        pub struct $name {
+            value: Vec<[(); 0]> // TODO: This should probably just be a counter, maybe?
+        }
+
+        impl OptionTr for $name {
+            fn number(&self) -> u16 {
+                $num
+            }
+
+            fn new() -> Self() {
+                $name{value: Vec::new()}
+            }
+
+            fn push_value_from_bytes(&mut self, bytes: &[u8]) -> Result<&mut Self, ()> {
+                if bytes.len() != 0 {
+                    self.value.push([]);
+                    Ok(self)
+                } else {
+                    Err(())
+                }
+            }
+
+            fn pop_value_to_bytes(&mut self) -> ::std::option::Option<Cow<[u8]>> {
+                self.value.pop().map(|_| Cow::Owned(Vec::new()))
+            }
+        }
+    };
+
+    ($num: expr, $name: ident, uint, $min: expr, $max: expr) => {
+        #[derive(Debug)]
+        pub struct $name {
+            value: Vec<u64>
+        }
+
+        impl OptionTr for $name {
+            fn number(&self) -> u16 {
+                $num
+            }
+
+            fn new() -> Self() {
+                $name{value: Vec::new()}
+            }
+
+            fn push_value_from_bytes(&mut self, bytes: &[u8]) -> Result<&mut Self, ()> {
+                // TODO: Replace with something like byte order?
+                fn bytes_to_value(bytes: &[u8]) -> u64 {
+                    let mut value = 0u64;
+
+                    for byte in bytes {
+                        value = (value << 8) + *byte as u64;
+                    }
+
+                    value
+                }
+
+                if bytes.len() >= $min as usize && bytes.len() <= $max as usize {
+                    self.value.push(bytes_to_value(bytes));
+                    Ok(self)
+                } else {
+                    Err(())
+                }
+            }
+
+            fn pop_value_to_bytes(&mut self) -> ::std::option::Option<Cow<[u8]>> {
+                fn value_to_bytes(mut n: u64) -> Vec<u8> {
+                    let mut bytes = vec![];
+                    while n != 0 {
+                        bytes.push(n as u8);
+                        n = n >> 8;
+                    }
+
+                    bytes.reverse();
+                    bytes
+                }
+
+                self.value.pop().map(|value| Cow::Owned(value_to_bytes(value)))
+            }
+        }
+    }
+}
+
+/// This builds the type for each individual option.
+macro_rules! options {
+    ( $( ($num: expr, $name: ident, $format: ident, $min: expr, $max: expr), )+ ) => {
+        #[derive(Debug)]
+        pub enum OptionTypes {
+            $(
+                $name,
+            )+
+            Unknown(u16)
+        }
+
+        pub fn from_raw(number: u16, v: &[u8]) -> Result<OptionTypes, ()> {
+            Ok(match number {
+                $(
+                    $num => OptionTypes::$name,
+                )+
+                _ => OptionTypes::Unknown(number),
+            })
+        }
+
+        $(
+            option!($num, $name, $format, $min, $max);
+        )+
+    }
+}
+
+options![
+    (1, IfMatch, opaque, 0, 8),
+    (3, UriHost, string, 1, 8),
+    (4, ETag, opaque, 0, 8),
+    (5, IfNoneMatch, empty, -1, -1), // TODO: fix macro to not need this
+    (7, UriPort, uint, 0, 2),
+    (8, LocationPath, string, 0, 255),
+    (11, UriPath, string, 0, 255),
+    (12, ContentFormat, uint, 0, 2),
+    (14, MaxAge, uint, 0, 4),
+    (15, UriQuery, string, 0, 255),
+    (17, Accept, uint, 0, 2),
+    (20, LocationQuery, string, 0, 255),
+    (35, ProxyUri, string, 1, 1034),
+    (29, ProxyScheme, string, 1, 255),
+    (60, Size1, uint, 0, 4),
+];
 
 impl Option {
     pub fn build_header(&self, last_option_number: &mut u16) -> Vec<u8> {
