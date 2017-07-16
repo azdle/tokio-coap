@@ -50,7 +50,7 @@ macro_rules! option {
                 $num
             }
 
-            fn new() -> Self() {
+            fn new() -> Self {
                 $name{value: Vec::new()}
             }
 
@@ -80,7 +80,7 @@ macro_rules! option {
                 $num
             }
 
-            fn new() -> Self() {
+            fn new() -> Self {
                 $name{value: Vec::new()}
             }
 
@@ -110,7 +110,7 @@ macro_rules! option {
                 $num
             }
 
-            fn new() -> Self() {
+            fn new() -> Self {
                 $name{value: Vec::new()}
             }
 
@@ -140,7 +140,7 @@ macro_rules! option {
                 $num
             }
 
-            fn new() -> Self() {
+            fn new() -> Self {
                 $name{value: Vec::new()}
             }
 
