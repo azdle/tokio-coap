@@ -25,7 +25,7 @@ pub enum Option {
 
 trait OptionTr : Sized {
     /// NOTE: This should be replaced with an associated const when they make it to stable.
-    fn number(&self) -> u16;
+    fn number() -> u16;
 
     fn new() -> Self;
 
@@ -46,7 +46,7 @@ macro_rules! option {
         }
 
         impl OptionTr for $name {
-            fn number(&self) -> u16 {
+            fn number() -> u16 {
                 $num
             }
 
@@ -76,7 +76,7 @@ macro_rules! option {
         }
 
         impl OptionTr for $name {
-            fn number(&self) -> u16 {
+            fn number() -> u16 {
                 $num
             }
 
@@ -106,7 +106,7 @@ macro_rules! option {
         }
 
         impl OptionTr for $name {
-            fn number(&self) -> u16 {
+            fn number() -> u16 {
                 $num
             }
 
@@ -136,7 +136,7 @@ macro_rules! option {
         }
 
         impl OptionTr for $name {
-            fn number(&self) -> u16 {
+            fn number() -> u16 {
                 $num
             }
 
