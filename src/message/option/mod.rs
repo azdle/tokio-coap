@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::borrow::Cow;
 use std::str;
 use message::Error;
@@ -24,7 +25,24 @@ pub enum Option {
     Unknown((u16, Vec<u8>)),
 }
 
-trait OptionTr : Sized {
+#[derive(PartialEq, Eq, Debug)]
+pub struct Options {
+    map: BTreeMap<OptionKind, OptionType>
+}
+
+impl Options {
+    pub fn new() -> Self {
+        Options {
+            map: BTreeMap::new()
+        }
+    }
+
+    pub fn push<T: OptionTr>(&mut self, option: T) {
+
+    }
+}
+
+trait OptionTr {
     /// NOTE: This should be replaced with an associated const when they make it to stable.
     fn number() -> u16;
 
@@ -41,7 +59,7 @@ trait OptionTr : Sized {
 /// This builds the type for each individual option.
 macro_rules! option {
     ($num: expr, $name: ident, opaque, $min: expr, $max: expr) => {
-        #[derive(Debug)]
+        #[derive(PartialEq, Eq, Debug)]
         pub struct $name {
             value: Vec<Vec<u8>>
         }
@@ -71,7 +89,7 @@ macro_rules! option {
     };
 
     ($num: expr, $name: ident, string, $min: expr, $max: expr) => {
-        #[derive(Debug)]
+        #[derive(PartialEq, Eq, Debug)]
         pub struct $name {
             value: Vec<String>
         }
@@ -101,7 +119,7 @@ macro_rules! option {
     };
 
     ($num: expr, $name: ident, empty, $min: expr, $max: expr) => {
-        #[derive(Debug)]
+        #[derive(PartialEq, Eq, Debug)]
         pub struct $name {
             value: Vec<[(); 0]> // TODO: This should probably just be a counter, maybe?
         }
@@ -131,7 +149,7 @@ macro_rules! option {
     };
 
     ($num: expr, $name: ident, uint, $min: expr, $max: expr) => {
-        #[derive(Debug)]
+        #[derive(PartialEq, Eq, Debug)]
         pub struct $name {
             value: Vec<u64>
         }
@@ -186,7 +204,7 @@ macro_rules! option {
 /// This builds the type for each individual option.
 macro_rules! options {
     ( $( ($num: expr, $name: ident, $format: ident, $min: expr, $max: expr), )+ ) => {
-        #[derive(Debug)]
+         #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
         pub enum OptionKind {
             $(
                 $name,
