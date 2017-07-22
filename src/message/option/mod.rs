@@ -194,13 +194,40 @@ macro_rules! options {
             Unknown(u16)
         }
 
+        impl OptionKind {
+            fn from_number(number: u16) -> Self {
+                match number {
+                    $(
+                        $num => OptionKind::$name,
+                    )+
+                    _ => OptionKind::Unknown(number),
+                }
+            }
+
+            fn to_number(kind: Self) -> u16 {
+                match kind {
+                    $(
+                        OptionKind::$name => $num,
+                    )+
+                    OptionKind::Unknown(number) => number,
+                }
+            }
+        }
+
+        #[derive(PartialEq, Eq, Debug)]
+        pub enum OptionType {
+            $(
+                $name($name),
+            )+
+            Unknown(u16, Vec<u8>)
+        }
 
         pub fn from_raw(number: u16, v: &[u8]) -> Result<OptionType, Error> {
             Ok(match number {
                 $(
-                    $num => OptionKind::$name,
+                    $num => { let mut o = $name::new(); o.push_value_from_bytes(v).unwrap(); OptionType::$name(o) },
                 )+
-                _ => OptionKind::Unknown(number),
+                _ => OptionType::Unknown(number, v.to_vec()),
             })
         }
 
