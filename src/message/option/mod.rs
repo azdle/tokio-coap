@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::str;
+use message::Error;
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum Option {
@@ -29,7 +30,7 @@ trait OptionTr : Sized {
 
     fn new() -> Self;
 
-    fn push_value_from_bytes(&mut self, bytes: &[u8]) -> Result<&mut Self, ()>;
+    fn push_value_from_bytes(&mut self, bytes: &[u8]) -> Result<&mut Self, Error>;
     fn pop_value_to_bytes(&mut self) -> ::std::option::Option<Cow<[u8]>>;
 }
 
@@ -54,12 +55,12 @@ macro_rules! option {
                 $name{value: Vec::new()}
             }
 
-            fn push_value_from_bytes(&mut self, bytes: &[u8]) -> Result<&mut Self, ()> {
+            fn push_value_from_bytes(&mut self, bytes: &[u8]) -> Result<&mut Self, Error> {
                 if bytes.len() >= $min as usize && bytes.len() <= $max as usize {
                     self.value.push(bytes.to_vec());
                     Ok(self)
                 } else {
-                    Err(())
+                    Err(Error::MessageFormat)
                 }
             }
 
@@ -84,12 +85,12 @@ macro_rules! option {
                 $name{value: Vec::new()}
             }
 
-            fn push_value_from_bytes(&mut self, bytes: &[u8]) -> Result<&mut Self, ()> {
+            fn push_value_from_bytes(&mut self, bytes: &[u8]) -> Result<&mut Self, Error> {
                 if bytes.len() >= $min as usize && bytes.len() <= $max as usize {
-                    self.value.push(str::from_utf8(bytes).or(Err(()))?.to_string());
+                    self.value.push(str::from_utf8(bytes).or(Err(Error::MessageFormat))?.to_string());
                     Ok(self)
                 } else {
-                    Err(())
+                    Err(Error::MessageFormat)
                 }
             }
 
@@ -114,12 +115,12 @@ macro_rules! option {
                 $name{value: Vec::new()}
             }
 
-            fn push_value_from_bytes(&mut self, bytes: &[u8]) -> Result<&mut Self, ()> {
+            fn push_value_from_bytes(&mut self, bytes: &[u8]) -> Result<&mut Self, Error> {
                 if bytes.len() != 0 {
                     self.value.push([]);
                     Ok(self)
                 } else {
-                    Err(())
+                    Err(Error::MessageFormat)
                 }
             }
 
@@ -144,7 +145,7 @@ macro_rules! option {
                 $name{value: Vec::new()}
             }
 
-            fn push_value_from_bytes(&mut self, bytes: &[u8]) -> Result<&mut Self, ()> {
+            fn push_value_from_bytes(&mut self, bytes: &[u8]) -> Result<&mut Self, Error> {
                 // TODO: Replace with something like byte order?
                 fn bytes_to_value(bytes: &[u8]) -> u64 {
                     let mut value = 0u64;
@@ -160,7 +161,7 @@ macro_rules! option {
                     self.value.push(bytes_to_value(bytes));
                     Ok(self)
                 } else {
-                    Err(())
+                    Err(Error::MessageFormat)
                 }
             }
 
@@ -193,7 +194,8 @@ macro_rules! options {
             Unknown(u16)
         }
 
-        pub fn from_raw(number: u16, v: &[u8]) -> Result<OptionKind, ()> {
+
+        pub fn from_raw(number: u16, v: &[u8]) -> Result<OptionType, Error> {
             Ok(match number {
                 $(
                     $num => OptionKind::$name,
