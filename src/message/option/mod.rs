@@ -260,6 +260,7 @@ options![
     (3, UriHost, string, 1, 8),
     (4, ETag, opaque, 0, 8),
     (5, IfNoneMatch, empty, -1, -1), // TODO: fix macro to not need this
+    (6, Observe, uint, 0, 4),
     (7, UriPort, uint, 0, 2),
     (8, LocationPath, string, 0, 255),
     (11, UriPath, string, 0, 255),
@@ -271,6 +272,7 @@ options![
     (35, ProxyUri, string, 1, 1034),
     (29, ProxyScheme, string, 1, 255),
     (60, Size1, uint, 0, 4),
+    (284, NoResponse, uint, 0, 1),
 ];
 
 impl Option {
