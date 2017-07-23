@@ -10,7 +10,7 @@ use tokio_core::net::UdpSocket;
 use tokio_core::reactor::Core;
 
 use tokio_coap::message::{Message, Mtype, Code};
-use tokio_coap::message::option::Option::{UriPath};
+use tokio_coap::message::option::Options;
 
 fn main() {
     drop(env_logger::init());
@@ -30,15 +30,15 @@ fn main() {
         if let Some(request) = request {
             match request.mtype {
                 Mtype::Confirmable | Mtype::NonConfirmable => {
-                    match request.options[0] {
-                        UriPath(ref _path) => {
+                    match true {
+                        false => {
                             let reply = Message {
                                 version: 1,
                                 mtype: Mtype::Acknowledgement,
                                 code: Code::Content,
                                 mid: request.mid,
                                 token: request.token.clone(),
-                                options: vec![],
+                                options: Options::new(),
                                 payload: addr.ip().to_string().as_bytes().to_owned(),
                             };
 
@@ -53,7 +53,7 @@ fn main() {
                                 code: Code::NotImplemented,
                                 mid: request.mid,
                                 token: request.token.clone(),
-                                options: vec![],
+                                options: Options::new(),
                                 payload: vec![],
                             };
 

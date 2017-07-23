@@ -1,5 +1,7 @@
 pub mod option;
 
+use self::option::Options;
+
 #[derive(PartialEq, Eq, Debug)]
 pub struct Message {
     pub version: u8,
@@ -7,7 +9,7 @@ pub struct Message {
     pub code: Code,
     pub mid: u16,
     pub token: Vec<u8>,
-    pub options: Vec<option::Option>,
+    pub options: Options,
     pub payload: Vec<u8>,
 }
 
@@ -184,7 +186,7 @@ impl Message {
 
         i = 4 + token_length as usize;
 
-        let mut options: Vec<option::Option> = vec![];
+        let mut options = option::Options::new();
         let mut option_number_offset = 0u16;
 
         while i < pkt.len() {
@@ -231,8 +233,7 @@ impl Message {
             }
 
             if pkt.len() >= i + (length as usize) {
-                options.push(option::Option::from_raw(option_number, &pkt[i..i+(length as usize)]));
-                //options.push(option::from_raw(option_number, &pkt[i..i+(length as usize)]));
+                options.push(option::from_raw(option_number, &pkt[i..i+(length as usize)])?);
             } else {
                 return Err(Error::MessageFormat);
             }
@@ -265,13 +266,13 @@ impl Message {
         // estimate packet size
         let mut est_pkt_size: usize = 4 + self.token.len() + 1 + 1 + self.payload.len();
 
-        for option in &self.options {
-            est_pkt_size += 2 + option.value_len();
+         for option in self.options.iter() {
+             est_pkt_size += 2 + option.bytes_len();
 
-            if option.number() >= 65000 {
-                return Err(Error::MessageFormat);
-            }
-        }
+             if option.number() >= 65000 {
+                 return Err(Error::MessageFormat);
+             }
+         }
 
         let mut pkt = Vec::with_capacity(est_pkt_size);
 
@@ -284,12 +285,12 @@ impl Message {
             pkt.push(*byte)
         }
 
-        let mut last_option_number = 0;
+         let mut last_option_number = 0;
 
-        for option in &self.options {
-            pkt.extend(option.build_header(&mut last_option_number));
-            pkt.extend(option.value_to_bytes().iter());
-        }
+         for option in self.options.iter() {
+             pkt.extend(option::build_header(option, &mut last_option_number).iter());
+             pkt.extend(option.to_bytes().iter());
+         }
 
         if self.payload.len() > 0 {
             pkt.push(0xFF);
@@ -314,7 +315,7 @@ fn test_msg_parse_empty() {
     assert!(msg.code.detail() == 0);
     assert!(msg.mid == 0);
     assert!(msg.token.len() == 0);
-    assert!(msg.options.len() == 0);
+    assert!(msg.options == option::Options::new());
     assert!(msg.payload.len() == 0);
 }
 
@@ -327,7 +328,7 @@ fn test_msg_serialize_empty() {
         code: Code::Empty,
         mid: 0,
         token: vec![],
-        options: vec![],
+        options: option::Options::new(),
         payload: vec![],
     };
 
@@ -349,7 +350,7 @@ fn test_msg_parse_empty_con_with_token() {
     assert!(msg.code.detail() == 0);
     assert!(msg.mid == 0);
     assert!(msg.token == [37, 42]);
-    assert!(msg.options.len() == 0);
+    assert!(msg.options == option::Options::new());
     assert!(msg.payload.len() == 0);
 }
 
@@ -366,7 +367,7 @@ fn test_msg_parse_get_con() {
     assert!(msg.code.detail() == 1);
     assert!(msg.mid == 0x37);
     assert!(msg.token == [0x99]);
-    assert!(msg.options.len() == 0);
+    assert!(msg.options == option::Options::new());
     assert!(msg.payload == [0x01, 0x02]);
 }
 
@@ -387,10 +388,10 @@ fn test_msg_parse_get_con_with_opts() {
     assert!(msg.code.detail() == 2);
     assert!(msg.mid == 0x0037);
     assert!(msg.token.len() == 0);
-    assert!(msg.options ==
-            [option::Option::UriPath("1a".to_string()),
-             option::Option::UriPath("temp".to_string()),
-             option::Option::UriQuery("a32c85ba9dda45823be416246cf8b433baa068d7".to_string())]);
+    //assert!(msg.options ==
+    //        [option::Option::UriPath("1a".to_string()),
+    //         option::Option::UriPath("temp".to_string()),
+    //         option::Option::UriQuery("a32c85ba9dda45823be416246cf8b433baa068d7".to_string())]);
     assert!(msg.payload == [0x39, 0x39]);
 }
 
@@ -407,10 +408,11 @@ fn test_msg_encode_get_con_with_opts() {
         code: Code::Post,
         mid: 0x0037,
         token: vec![],
-        options: vec![option::Option::UriPath("1a".to_string()),
-                      option::Option::UriPath("temp".to_string()),
-                      option::Option::UriQuery("a32c85ba9dda45823be416246cf8b433baa068d7"
-                          .to_string())],
+        options: option::Options::new(),
+        //options: vec![option::Option::UriPath("1a".to_string()),
+        //              option::Option::UriPath("temp".to_string()),
+        //              option::Option::UriQuery("a32c85ba9dda45823be416246cf8b433baa068d7"
+        //                  .to_string())],
         payload: vec![0x39, 0x39],
     };
 
