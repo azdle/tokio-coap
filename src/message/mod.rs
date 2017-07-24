@@ -373,11 +373,18 @@ fn test_msg_parse_get_con() {
 
 #[test]
 fn test_msg_parse_get_con_with_opts() {
+    use self::option::{Option, Options, UriPath, UriQuery};
+
     let ref_bin = [0x40, 0x02, 0x00, 0x37, 0xb2, 0x31, 0x61, 0x04, 0x74, 0x65, 0x6d, 0x70, 0x4d,
                    0x1b, 0x61, 0x33, 0x32, 0x63, 0x38, 0x35, 0x62, 0x61, 0x39, 0x64, 0x64, 0x61,
                    0x34, 0x35, 0x38, 0x32, 0x33, 0x62, 0x65, 0x34, 0x31, 0x36, 0x32, 0x34, 0x36,
                    0x63, 0x66, 0x38, 0x62, 0x34, 0x33, 0x33, 0x62, 0x61, 0x61, 0x30, 0x36, 0x38,
                    0x64, 0x37, 0xFF, 0x39, 0x39];
+
+    let mut opts = Options::new();
+    opts.push(UriPath::new("1a".to_owned()).into());
+    opts.push(UriPath::new("temp".to_owned()).into());
+    opts.push(UriQuery::new("a32c85ba9dda45823be416246cf8b433baa068d7".to_owned()).into());
 
     let msg = Message::from_bytes(&ref_bin).unwrap();
 
@@ -388,31 +395,32 @@ fn test_msg_parse_get_con_with_opts() {
     assert!(msg.code.detail() == 2);
     assert!(msg.mid == 0x0037);
     assert!(msg.token.len() == 0);
-    //assert!(msg.options ==
-    //        [option::Option::UriPath("1a".to_string()),
-    //         option::Option::UriPath("temp".to_string()),
-    //         option::Option::UriQuery("a32c85ba9dda45823be416246cf8b433baa068d7".to_string())]);
+    assert!(msg.options == opts);
     assert!(msg.payload == [0x39, 0x39]);
 }
 
 #[test]
 fn test_msg_encode_get_con_with_opts() {
+    use self::option::{Option, Options, UriPath, UriQuery};
+
     let ref_bin = [0x40, 0x02, 0x00, 0x37, 0xb2, 0x31, 0x61, 0x04, 0x74, 0x65, 0x6d, 0x70, 0x4d,
                    0x1b, 0x61, 0x33, 0x32, 0x63, 0x38, 0x35, 0x62, 0x61, 0x39, 0x64, 0x64, 0x61,
                    0x34, 0x35, 0x38, 0x32, 0x33, 0x62, 0x65, 0x34, 0x31, 0x36, 0x32, 0x34, 0x36,
                    0x63, 0x66, 0x38, 0x62, 0x34, 0x33, 0x33, 0x62, 0x61, 0x61, 0x30, 0x36, 0x38,
                    0x64, 0x37, 0xFF, 0x39, 0x39];
+
+    let mut opts = Options::new();
+    opts.push(UriPath::new("1a".to_owned()).into());
+    opts.push(UriPath::new("temp".to_owned()).into());
+    opts.push(UriQuery::new("a32c85ba9dda45823be416246cf8b433baa068d7".to_owned()).into());
+
     let msg = Message {
         version: 1,
         mtype: Mtype::Confirmable,
         code: Code::Post,
         mid: 0x0037,
         token: vec![],
-        options: option::Options::new(),
-        //options: vec![option::Option::UriPath("1a".to_string()),
-        //              option::Option::UriPath("temp".to_string()),
-        //              option::Option::UriQuery("a32c85ba9dda45823be416246cf8b433baa068d7"
-        //                  .to_string())],
+        options: opts,
         payload: vec![0x39, 0x39],
     };
 
