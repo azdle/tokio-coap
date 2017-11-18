@@ -42,10 +42,19 @@ fn main() {
         .send((remote_addr, Some(request)))
         .and_then(|x| {
             x
-            .take(1)
-            .for_each(|(addr, msg)| {
-                println!("Response from {}: {:?}", addr, msg);
-                println!("{}", String::from_utf8_lossy(&msg.unwrap().payload));
+            .take(1) // we expect 1 response packet, TODO: check that packet is response
+            .for_each(|(_addr, msg)| {
+                match msg {
+                    Some(msg) => {
+                        match msg.code {
+                            Code::Content => {
+                                println!("{}", String::from_utf8_lossy(&msg.payload));
+                            },
+                            _ => println!("Unexpeted Response"),
+                        }
+                    },
+                    None => println!("Got un-parsable packet"),
+                }
 
                 future::ok(())
             })
