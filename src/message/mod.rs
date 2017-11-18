@@ -32,12 +32,12 @@ pub enum Mtype {
 
 impl Mtype {
     pub fn from_u8(raw_mtype: u8) -> Mtype {
-        match raw_mtype {
+        match raw_mtype & 0x03 {
             0 => Mtype::Confirmable,
             1 => Mtype::NonConfirmable,
             2 => Mtype::Acknowledgement,
             3 => Mtype::Reset,
-            _ => panic!("bad rawtype"),
+            _ => unreachable!(),
         }
     }
 
@@ -206,7 +206,7 @@ impl Message {
                     i += 2;
                     (((pkt[i - 1] as u16) << 8) | pkt[i] as u16) + 269
                 }
-                15 => panic!("message format error"),
+                15 => return Err(Error::MessageFormat),
                 _ => unreachable!(),
             };
             let length = match pkt[i] & 0x0F {
@@ -219,7 +219,7 @@ impl Message {
                     i += 2;
                     ((pkt[i - 1] as u16) << 8) | pkt[i] as u16 + 269
                 }
-                15 => panic!("message format error"),
+                15 => return Err(Error::MessageFormat),
                 _ => unreachable!(),
             };
 
