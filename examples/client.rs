@@ -33,7 +33,7 @@ fn main() {
         mtype: Mtype::Confirmable,
         code: Code::Get,
         mid: 5234,
-        token: vec![3,36,254,64,0],
+        token: vec![3,36,254,64,0].into(),
         options: opts,
         payload: vec![]
     };

@@ -13,3 +13,4 @@ built on top of tokio-core.
 futures = "*"
 tokio-core = "*"
 env_logger = "*"
+smallvec = "*"

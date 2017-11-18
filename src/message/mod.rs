@@ -2,13 +2,15 @@ pub mod option;
 
 use self::option::Options;
 
+use smallvec::SmallVec;
+
 #[derive(PartialEq, Eq, Debug)]
 pub struct Message {
     pub version: u8,
     pub mtype: Mtype,
     pub code: Code,
     pub mid: u16,
-    pub token: Vec<u8>,
+    pub token: SmallVec<[u8; 8]>,
     pub options: Options,
     pub payload: Vec<u8>,
 }
@@ -179,10 +181,7 @@ impl Message {
             return Err(Error::MessageFormat);
         }
 
-        let mut token = vec![];
-        for j in 0..token_length {
-            token.push(pkt[4 + j as usize]);
-        }
+        let token = pkt[4..4+token_length as usize].into();
 
         i = 4 + token_length as usize;
 
@@ -327,7 +326,7 @@ fn test_msg_serialize_empty() {
         mtype: Mtype::Confirmable,
         code: Code::Empty,
         mid: 0,
-        token: vec![],
+        token: SmallVec::new(),
         options: option::Options::new(),
         payload: vec![],
     };
@@ -349,7 +348,7 @@ fn test_msg_parse_empty_con_with_token() {
     assert!(msg.code.class() == 0);
     assert!(msg.code.detail() == 0);
     assert!(msg.mid == 0);
-    assert!(msg.token == [37, 42]);
+    assert!(msg.token == [37, 42].into());
     assert!(msg.options == option::Options::new());
     assert!(msg.payload.len() == 0);
 }
@@ -366,7 +365,7 @@ fn test_msg_parse_get_con() {
     assert!(msg.code.class() == 0);
     assert!(msg.code.detail() == 1);
     assert!(msg.mid == 0x37);
-    assert!(msg.token == [0x99]);
+    assert!(msg.token == [0x99].into());
     assert!(msg.options == option::Options::new());
     assert!(msg.payload == [0x01, 0x02]);
 }
@@ -419,7 +418,7 @@ fn test_msg_encode_get_con_with_opts() {
         mtype: Mtype::Confirmable,
         code: Code::Post,
         mid: 0x0037,
-        token: vec![],
+        token: SmallVec::new(),
         options: opts,
         payload: vec![0x39, 0x39],
     };
