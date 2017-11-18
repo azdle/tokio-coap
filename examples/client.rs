@@ -10,7 +10,7 @@ use tokio_core::net::UdpSocket;
 use tokio_core::reactor::Core;
 
 use tokio_coap::message::{Message, Mtype, Code};
-use tokio_coap::message::option::Options;
+use tokio_coap::message::option::{Option, Options, UriPath};
 
 fn main() {
     drop(env_logger::init());
@@ -25,13 +25,16 @@ fn main() {
 
     let framed_socket = sock.framed(tokio_coap::codec::CoapCodec);
 
+    let mut opts = Options::new();
+    opts.push(UriPath::new("test".to_owned()).into());
+
     let request = Message {
         version: 1,
         mtype: Mtype::Confirmable,
         code: Code::Get,
         mid: 5234,
         token: vec![3,36,254,64,0],
-        options: Options::new(),
+        options: opts,
         payload: vec![]
     };
 
@@ -42,10 +45,11 @@ fn main() {
             .take(1)
             .for_each(|(addr, msg)| {
                 println!("Response from {}: {:?}", addr, msg);
+                println!("{}", String::from_utf8_lossy(&msg.unwrap().payload));
 
                 future::ok(())
             })
         });
 
-    drop(core.run(client));
+    core.run(client).expect("run core");
 }
