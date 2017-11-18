@@ -10,6 +10,7 @@ use tokio_core::net::UdpSocket;
 use tokio_core::reactor::Core;
 
 use tokio_coap::message::{Message, Mtype, Code};
+use tokio_coap::message::option::Options;
 
 fn main() {
     drop(env_logger::init());
@@ -35,7 +36,7 @@ fn main() {
                         code: Code::NotImplemented,
                         mid: request.mid,
                         token: request.token.clone(),
-                        options: vec![],
+                        options: Options::new(),
                         payload: vec![],
                     };
 
