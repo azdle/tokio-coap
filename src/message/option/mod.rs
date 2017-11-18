@@ -86,7 +86,6 @@ pub trait Option: Sized {
 }
 
 pub trait Byteable {
-    /// NOTE: This should be replaced with an associated const when they make it to stable.
     fn number(&self) -> u16;
 
     fn to_bytes(&self) -> Cow<[u8]>;
