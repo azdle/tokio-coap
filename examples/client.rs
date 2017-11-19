@@ -19,14 +19,14 @@ fn main() {
     let handle = core.handle();
 
     let local_addr: SocketAddr = "0.0.0.0:5683".parse().unwrap();
-    let remote_addr: SocketAddr = "134.102.218.18:5683".parse().unwrap(); // coap.me
+    let remote_addr: SocketAddr = "104.236.199.143:5683".parse().unwrap(); // coap.sh
 
     let sock = UdpSocket::bind(&local_addr, &handle).unwrap();
 
     let framed_socket = sock.framed(tokio_coap::codec::CoapCodec);
 
     let mut opts = Options::new();
-    opts.push(UriPath::new("test".to_owned()));
+    opts.push(UriPath::new("ip".to_owned()));
 
     let request = Message {
         version: 1,
