@@ -434,9 +434,9 @@ fn test_msg_parse_get_con_with_opts() {
                    0x64, 0x37, 0xFF, 0x39, 0x39];
 
     let mut opts = Options::new();
-    opts.push(UriPath::new("1a".to_owned()).into());
-    opts.push(UriPath::new("temp".to_owned()).into());
-    opts.push(UriQuery::new("a32c85ba9dda45823be416246cf8b433baa068d7".to_owned()).into());
+    opts.push(UriPath::new("1a".to_owned()));
+    opts.push(UriPath::new("temp".to_owned()));
+    opts.push(UriQuery::new("a32c85ba9dda45823be416246cf8b433baa068d7".to_owned()));
 
     let msg = Message::from_bytes(&ref_bin).unwrap();
 
@@ -462,9 +462,9 @@ fn test_msg_encode_get_con_with_opts() {
                    0x64, 0x37, 0xFF, 0x39, 0x39];
 
     let mut opts = Options::new();
-    opts.push(UriPath::new("1a".to_owned()).into());
-    opts.push(UriPath::new("temp".to_owned()).into());
-    opts.push(UriQuery::new("a32c85ba9dda45823be416246cf8b433baa068d7".to_owned()).into());
+    opts.push(UriPath::new("1a".to_owned()));
+    opts.push(UriPath::new("temp".to_owned()));
+    opts.push(UriQuery::new("a32c85ba9dda45823be416246cf8b433baa068d7".to_owned()));
 
     let msg = Message {
         version: 1,

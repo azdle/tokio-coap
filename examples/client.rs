@@ -26,7 +26,7 @@ fn main() {
     let framed_socket = sock.framed(tokio_coap::codec::CoapCodec);
 
     let mut opts = Options::new();
-    opts.push(UriPath::new("test".to_owned()).into());
+    opts.push(UriPath::new("test".to_owned()));
 
     let request = Message {
         version: 1,
