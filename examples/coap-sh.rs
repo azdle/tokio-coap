@@ -9,8 +9,9 @@ use futures::{Stream, Sink};
 use tokio_core::net::UdpSocket;
 use tokio_core::reactor::Core;
 
-use tokio_coap::message::{Message, Mtype, Code};
-use tokio_coap::message::option::{Option, Options, OptionType, OptionKind, UriPath};
+use tokio_coap::message::{Mtype, Code};
+use tokio_coap::message::Code::{Content, NotImplemented};
+use tokio_coap::message::option::UriPath;
 
 fn main() {
     drop(env_logger::init());
@@ -30,36 +31,19 @@ fn main() {
         if let Some(mut req) = req {
             match req.mtype {
                 Mtype::Confirmable | Mtype::NonConfirmable => {
-                    match req.options.get_all_of(OptionKind::UriPath) {
-                        Some(x) if x == &vec![OptionType::UriPath(UriPath::new("ip".into()))] => {
-                            let reply = Message {
-                                version: 1,
-                                mtype: Mtype::Acknowledgement,
-                                code: Code::Content,
-                                mid: req.mid,
-                                token: req.token.clone(),
-                                options: Options::new(),
-                                payload: addr.ip().to_string().as_bytes().to_owned(),
-                            };
-
-                            println!("<-- {:?}", reply);
-
-                            (addr, Some(reply))
-                        },
+                    let path = req.options.get::<UriPath>();
+                    match (&req.code, &path) {
+                        (&Code::Get, &Some(ref p)) if p == &["ip".into()] => {
+                            (addr,
+                             Some(req.new_reply()
+                                .with_code(Content)
+                                .with_payload(addr.ip()
+                                                  .to_string()
+                                                  .as_bytes()
+                                                  .to_owned())))
+                        }
                         _ => {
-                            let reply = Message {
-                                version: 1,
-                                mtype: Mtype::Acknowledgement,
-                                code: Code::NotImplemented,
-                                mid: req.mid,
-                                token: req.token.clone(),
-                                options: Options::new(),
-                                payload: vec![],
-                            };
-
-                            println!("<-- {:?}", reply);
-
-                            (addr, Some(reply))
+                            (addr, Some(req.new_reply().with_code(NotImplemented)))
                         }
                     }
                 }

@@ -206,9 +206,9 @@ impl Message {
 
     pub fn with_option<T: option::Option + option::Byteable>(mut self, option: T) -> Self {
         self.options.map
-            .entry(option.kind())
+            .entry(option.number())
             .or_insert_with(|| Vec::new())
-            .push(option.into_type());
+            .push(option.to_bytes().into_owned());
         self
     }
 
@@ -285,7 +285,7 @@ impl Message {
             }
 
             if pkt.len() >= i + (length as usize) {
-                options.push(option::from_raw(option_number, &pkt[i..i+(length as usize)])?);
+                options.push_raw(option_number, pkt[i..i+(length as usize)].into());
             } else {
                 return Err(Error::MessageFormat);
             }
@@ -318,10 +318,10 @@ impl Message {
         // estimate packet size
         let mut est_pkt_size: usize = 4 + self.token.len() + 1 + 1 + self.payload.len();
 
-         for option in self.options.iter() {
-             est_pkt_size += 2 + option.bytes_len();
+         for (number, bytes) in self.options.iter() {
+             est_pkt_size += 2 + bytes.len() as usize;
 
-             if option.number() >= 65000 {
+             if number >= 65000 {
                  return Err(Error::MessageFormat);
              }
          }
@@ -339,9 +339,9 @@ impl Message {
 
          let mut last_option_number = 0;
 
-         for option in self.options.iter() {
-             pkt.extend(option::build_header(option, &mut last_option_number).iter());
-             pkt.extend(option.to_bytes().iter());
+         for (number, bytes) in self.options.iter() {
+             pkt.extend(option::build_header(number, bytes, &mut last_option_number).iter());
+             pkt.extend(bytes);
          }
 
         if self.payload.len() > 0 {

@@ -7,7 +7,7 @@ use std::option::Option as StdOption;
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct Options {
-    pub map: BTreeMap<OptionKind, Vec<OptionType>>,
+    pub map: BTreeMap<u16, Vec<Vec<u8>>>,
 }
 
 impl Options {
@@ -17,71 +17,68 @@ impl Options {
         }
     }
 
-    pub fn iter(&self) -> OptionsIterator {
-        OptionsIterator::new(self)
+    pub fn iter(&self) -> RawOptionsIterator {
+        RawOptionsIterator::new(self)
     }
 
-    pub fn push(&mut self, option: OptionType) {
+    pub fn push<T: Option + Byteable>(&mut self, option: T) {
         self.map
-            .entry(option.kind())
+            .entry(option.number())
             .or_insert_with(|| Vec::new())
-            .push(option);
+            .push(option.to_bytes().into_owned());
     }
 
-    pub fn get_all_of(&mut self, kind: OptionKind) -> StdOption<&Vec<OptionType>> {
+    pub fn push_raw(&mut self, number: u16, raw_value: Vec<u8>) {
         self.map
-            .get(&kind)
+            .entry(number)
+            .or_insert_with(|| Vec::new())
+            .push(raw_value);
     }
 
-//    pub fn get<T: Option>(&mut self) -> StdOption<&Vec<T>> {
-//        let kind = <T as Option>::kind(T);
-//        self.map
-//            .get(&kind)
-//    }
+    pub fn get<T: Option>(&mut self) -> StdOption<Vec<T>> {
+        self.map
+            .get(&<T as Option>::NUMBER)
+            .map(|o| o.iter()
+                      .map(|v| <T as Option>::from_bytes(v.as_ref()).unwrap() )
+                      .collect())
+    }
+
+    pub fn get_raw<T: Option>(&mut self) -> StdOption<Vec<Vec<u8>>> {
+        self.map
+            .get(&<T as Option>::NUMBER)
+            .map(|v| v.to_owned() )
+    }
 }
 
-pub struct OptionsIterator<'a> {
+pub struct RawOptionsIterator<'a> {
     options: &'a Options,
     place: usize
 }
 
-impl<'a> OptionsIterator<'a> {
-    fn new(options: &'a Options) -> OptionsIterator<'a> {
-        OptionsIterator {
+impl<'a> RawOptionsIterator<'a> {
+    fn new(options: &'a Options) -> RawOptionsIterator<'a> {
+        RawOptionsIterator {
             options: options,
             place: 0,
         }
     }
 }
 
-impl<'a> Iterator for OptionsIterator<'a> {
-    type Item = &'a Byteable;
+impl<'a> Iterator for RawOptionsIterator<'a> {
+    type Item = (u16, &'a [u8]);
 
     fn next(&mut self) -> StdOption<Self::Item> {
         let i = self.place;
         self.place += 1;
-        self.options.map.iter().flat_map(|(_k,v)| v).nth(i).map(|ot| ot.as_byteable())
-    }
-}
-
-impl IntoIterator for Options {
-    type Item = OptionType;
-    type IntoIter = Box<Iterator<Item=OptionType>>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        Box::new(self.map.into_iter().flat_map(|(_k,v)| v))
+        self.options.map.iter().flat_map(|(&k, ref v)| v.iter().map(move |v| (k,v.as_ref()))).nth(i)
     }
 }
 
 pub trait Option: Sized {
-    type Value;
+    const NUMBER: u16;
+    type Format;
 
-    fn kind(&self) -> OptionKind;
-
-    fn new(Self::Value) -> Self;
-
-    fn into_type(self) -> OptionType;
-
+    fn new(Self::Format) -> Self;
     fn from_bytes(bytes: &[u8]) -> Result<Self, Error>;
 }
 
@@ -93,14 +90,14 @@ pub trait Byteable {
     // TODO: add as_bytes, into_bytes
 }
 
-pub fn build_header<'a>(option: &'a Byteable, last_option_number: &mut u16) -> Cow<'a, [u8]> {
+pub fn build_header<'a>(number: u16, bytes: &[u8], last_option_number: &mut u16) -> Cow<'a, [u8]> {
     let mut header = vec![0u8];
 
-    if option.number() < *last_option_number {
+    if number < *last_option_number {
         panic!("bad order");
     }
 
-    let delta = option.number() - *last_option_number;
+    let delta = number - *last_option_number;
     let base_delta = match delta {
         0...12 => delta,
         13...268 => {
@@ -114,7 +111,7 @@ pub fn build_header<'a>(option: &'a Byteable, last_option_number: &mut u16) -> C
         }
         _ => unreachable!(),
     } as u8;
-    let length = option.bytes_len();
+    let length = bytes.len();
     let base_length = match length {
         0...12 => length,
         13...268 => {
@@ -136,20 +133,6 @@ pub fn build_header<'a>(option: &'a Byteable, last_option_number: &mut u16) -> C
     Cow::Owned(header)
 }
 
-/// This macro contains the common structure of individual option types.
-macro_rules! option_common_fns {
-    ($name: ident) => {
-        fn kind(&self) -> OptionKind {
-            OptionKind::$name
-        }
-
-        fn into_type(self) -> OptionType {
-            OptionType::$name(self)
-        }
-    };
-
-}
-
 /// This builds the full type for each individual option.
 macro_rules! option {
     // Opaque Type Options
@@ -160,10 +143,10 @@ macro_rules! option {
         }
 
         impl Option for $name {
-            type Value = Vec<u8>;
-            option_common_fns!($name);
+            const NUMBER: u16 = $num;
+            type Format = Vec<u8>;
 
-            fn new(value: Self::Value) -> Self {
+            fn new(value: Self::Format) -> Self {
                 $name{value: value}
             }
 
@@ -190,20 +173,28 @@ macro_rules! option {
             }
 
         }
+
+        impl<'a> From<&'a [u8]> for $name {
+            fn from(bytes: &'a [u8]) -> Self {
+                Self {
+                    value: bytes.to_vec()
+                }
+            }
+        }
     };
 
     // String Type Options
     ($num: expr, $name: ident, string, $min: expr, $max: expr) => {
         #[derive(PartialEq, Eq, Debug)]
         pub struct $name {
-            value: String
+            pub value: String
         }
 
         impl Option for $name {
-            type Value = String;
-            option_common_fns!($name);
+            const NUMBER: u16 = $num;
+            type Format = String;
 
-            fn new(value: Self::Value) -> Self {
+            fn new(value: Self::Format) -> Self {
                 $name{value: value}
             }
 
@@ -230,6 +221,14 @@ macro_rules! option {
                 self.value.bytes().len()
             }
         }
+
+        impl<'a> From<&'a str> for $name {
+            fn from(str: &'a str) -> Self {
+                Self {
+                    value: str.to_owned()
+                }
+            }
+        }
     };
 
     // Empty Type Options
@@ -238,8 +237,8 @@ macro_rules! option {
         pub struct $name;
 
         impl Option for $name {
-            type Value = ();
-            option_common_fns!($name);
+            const NUMBER: u16 = $num;
+            type Format = ();
 
             fn new(_value: ()) -> Self {
                 $name
@@ -268,6 +267,8 @@ macro_rules! option {
                 0
             }
         }
+
+        //TODO: Impl From for (), somehow
     };
 
     // UInt Type Options
@@ -278,25 +279,14 @@ macro_rules! option {
         }
 
         impl Option for $name {
-            type Value = u64;
-            option_common_fns!($name);
+            const NUMBER: u16 = $num;
+            type Format = u64;
 
             fn new(value: u64) -> Self {
                 $name{value: value}
             }
 
             fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-                // TODO: Replace with something like byte order?
-                fn bytes_to_value(bytes: &[u8]) -> u64 {
-                    let mut value = 0u64;
-
-                    for byte in bytes {
-                        value = (value << 8) + *byte as u64;
-                    }
-
-                    value
-                }
-
                 if bytes.len() >= $min as usize && bytes.len() <= $max as usize {
                     Ok($name{value: bytes_to_value(bytes)})
                 } else {
@@ -312,16 +302,6 @@ macro_rules! option {
             }
 
             fn to_bytes(&self) -> Cow<[u8]> {
-                fn value_to_bytes(mut n: u64) -> Vec<u8> {
-                    let mut bytes = vec![];
-                    while n != 0 {
-                        bytes.push(n as u8);
-                        n = n >> 8;
-                    }
-
-                    bytes.reverse();
-                    bytes
-                }
 
                 Cow::Owned(value_to_bytes(self.value))
             }
@@ -338,82 +318,48 @@ macro_rules! option {
                 i
             }
         }
+
+        impl<'a> From<&'a [u8]> for $name {
+            fn from(bytes: &'a [u8]) -> Self {
+                Self {
+                    value: bytes_to_value(bytes)
+                }
+            }
+        }
     }
 }
+
+// Helpers
+
+// TODO: Replace with something like byte order?
+fn bytes_to_value(bytes: &[u8]) -> u64 {
+    let mut value = 0u64;
+
+    for byte in bytes {
+        value = (value << 8) + *byte as u64;
+    }
+
+    value
+}
+
+fn value_to_bytes(mut n: u64) -> Vec<u8> {
+    let mut bytes = vec![];
+    while n != 0 {
+        bytes.push(n as u8);
+        n = n >> 8;
+    }
+
+    bytes.reverse();
+    bytes
+}
+
 
 /// This builds the type for each individual option.
 macro_rules! options {
     ( $( ($num: expr, $name: ident, $format: ident, $min: expr, $max: expr), )+ ) => {
-         #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
-        pub enum OptionKind {
-            $(
-                $name,
-            )+
-            Unknown(u16)
-        }
-
-        #[derive(PartialEq, Eq, Debug)]
-        pub enum OptionType {
-            $(
-                $name($name),
-            )+
-            Unknown(Unknown)
-        }
-
-        impl OptionType {
-            fn kind(&self) -> OptionKind {
-                match *self {
-                    $(
-                        OptionType::$name(_) => OptionKind::$name,
-                    )+
-                    OptionType::Unknown(ref o) => OptionKind::Unknown(o.number())
-                }
-            }
-
-            pub fn number(&self) -> u16 {
-                match *self {
-                    $(
-                        OptionType::$name(_) => $num,
-                    )+
-                    OptionType::Unknown(ref o) => o.number()
-                }
-            }
-
-            pub fn as_byteable(&self) -> &Byteable {
-                match *self {
-                    $(
-                        OptionType::$name(ref o) => { o as &Byteable },
-                    )+
-                    OptionType::Unknown(ref o) => { o as &Byteable },
-                }
-            }
-        }
-
-        $(
-            impl From<$name> for OptionType {
-                fn from(option: $name) -> OptionType {
-                    OptionType::$name(option)
-                }
-            }
-        )+
-
-
-        pub fn from_raw(number: u16, v: &[u8]) -> Result<OptionType, Error> {
-            Ok(match number {
-                $(
-                    $num => { let o = $name::from_bytes(v)?; OptionType::$name(o) },
-                )+
-                _ => { let mut o = Unknown::from_bytes(v)?; o.set_number(number); OptionType::Unknown(o) },
-            })
-        }
-
         $(
             option!($num, $name, $format, $min, $max);
         )+
-
-        //;
-
-
     }
 }
 
@@ -436,51 +382,4 @@ options![
     (60, Size1, uint, 0, 4),
     (284, NoResponse, uint, 0, 1),
 ];
-
-#[derive(PartialEq, Eq, Debug)]
-pub struct Unknown {
-    number: u16,
-    value: Vec<u8>
-}
-
-impl Unknown {
-    fn set_number(&mut self, number: u16) {
-        self.number = number;
-    }
-}
-
-impl Option for Unknown {
-    type Value = Vec<u8>;
-
-    fn kind(&self) -> OptionKind {
-        OptionKind::Unknown(self.number)
-    }
-
-    fn into_type(self) -> OptionType {
-        OptionType::Unknown(self)
-    }
-
-    fn new(value: Self::Value) -> Self {
-        Unknown{value: value, number: 0}
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        Ok(Self{value: bytes.to_vec(), number: 0})
-    }
-}
-
-impl Byteable for Unknown {
-    fn number(&self) -> u16 {
-        self.number
-    }
-
-    fn to_bytes(&self) -> Cow<[u8]> {
-        Cow::Owned(self.value.clone())
-    }
-
-    fn bytes_len(&self) -> usize {
-        self.value.len()
-    }
-
-}
 
