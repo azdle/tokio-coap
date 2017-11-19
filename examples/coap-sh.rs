@@ -24,20 +24,20 @@ fn main() {
 
     let (sink, stream) = sock.framed(tokio_coap::codec::CoapCodec).split();
 
-    let stream = stream.map(|(addr, request)| {
-        println!("--> {:?}", request);
+    let stream = stream.map(|(addr, req)| {
+        println!("--> {:?}", req);
 
-        if let Some(mut request) = request {
-            match request.mtype {
+        if let Some(mut req) = req {
+            match req.mtype {
                 Mtype::Confirmable | Mtype::NonConfirmable => {
-                    match request.options.get_all_of(OptionKind::UriPath) {
+                    match req.options.get_all_of(OptionKind::UriPath) {
                         Some(x) if x == &vec![OptionType::UriPath(UriPath::new("ip".into()))] => {
                             let reply = Message {
                                 version: 1,
                                 mtype: Mtype::Acknowledgement,
                                 code: Code::Content,
-                                mid: request.mid,
-                                token: request.token.clone(),
+                                mid: req.mid,
+                                token: req.token.clone(),
                                 options: Options::new(),
                                 payload: addr.ip().to_string().as_bytes().to_owned(),
                             };
@@ -51,8 +51,8 @@ fn main() {
                                 version: 1,
                                 mtype: Mtype::Acknowledgement,
                                 code: Code::NotImplemented,
-                                mid: request.mid,
-                                token: request.token.clone(),
+                                mid: req.mid,
+                                token: req.token.clone(),
                                 options: Options::new(),
                                 payload: vec![],
                             };
@@ -64,7 +64,7 @@ fn main() {
                     }
                 }
                 _ => {
-                    println!("<-X Not replying to message of type: {:?}", request.mtype);
+                    println!("<-X Not replying to message of type: {:?}", req.mtype);
                     (addr, None)
                 }
             }
