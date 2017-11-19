@@ -180,6 +180,7 @@ impl Message {
     pub fn new_reply(&self) -> Self {
         Self::new().with_token(&self.token)
                    .with_mid(self.mid)
+                   .with_mtype(Mtype::Acknowledgement)
     }
 
     pub fn with_mtype(mut self, mtype: Mtype) -> Self {
