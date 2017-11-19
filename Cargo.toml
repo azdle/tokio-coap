@@ -1,6 +1,6 @@
 [package]
 name = "tokio-coap"
-version = "0.0.1"
+version = "0.1.0"
 authors = ["Patrick Barrett <patrick@psbarrett.com>"]
 license = "MIT/Apache-2.0"
 repository = "https://github.com/azdle/tokio-coap"
