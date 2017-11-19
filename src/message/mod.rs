@@ -164,6 +164,58 @@ impl Code {
 }
 
 impl Message {
+    pub fn new() -> Self {
+        Message {
+            version: 1,
+            mtype: Mtype::Confirmable,
+            code: Code::Get,
+            mid: 0,
+            token: SmallVec::new(),
+            options: Options::new(),
+            payload: Vec::new(),
+
+        }
+    }
+
+    pub fn new_reply(&self) -> Self {
+        Self::new().with_token(&self.token)
+                   .with_mid(self.mid)
+    }
+
+    pub fn with_mtype(mut self, mtype: Mtype) -> Self {
+        self.mtype = mtype;
+        self
+    }
+
+    pub fn with_code(mut self, code: Code) -> Self {
+        self.code = code;
+        self
+    }
+
+    pub fn with_mid(mut self, mid: u16) -> Self {
+        self.mid = mid;
+        self
+    }
+
+    pub fn with_token(mut self, token: &[u8]) -> Self {
+        self.token.truncate(0);
+        self.token.extend_from_slice(token);
+        self
+    }
+
+    pub fn with_option<T: option::Option + option::Byteable>(mut self, option: T) -> Self {
+        self.options.map
+            .entry(option.kind())
+            .or_insert_with(|| Vec::new())
+            .push(option.into_type());
+        self
+    }
+
+    pub fn with_payload(mut self, payload: Vec<u8>) -> Self {
+        self.payload = payload;
+        self
+    }
+
     pub fn from_bytes(pkt: &[u8]) -> Result<Message, Error> {
         let mut i: usize;
 

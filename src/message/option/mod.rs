@@ -7,7 +7,7 @@ use std::option::Option as StdOption;
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct Options {
-    map: BTreeMap<OptionKind, Vec<OptionType>>,
+    pub map: BTreeMap<OptionKind, Vec<OptionType>>,
 }
 
 impl Options {
