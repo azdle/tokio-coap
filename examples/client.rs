@@ -18,7 +18,7 @@ fn main() {
     let mut core = Core::new().unwrap();
     let handle = core.handle();
 
-    let local_addr: SocketAddr = "0.0.0.0:5683".parse().unwrap();
+    let local_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
     let remote_addr: SocketAddr = "104.236.199.143:5683".parse().unwrap(); // coap.sh
 
     let sock = UdpSocket::bind(&local_addr, &handle).unwrap();
