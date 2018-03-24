@@ -3,7 +3,9 @@
 //! for use with`tokio-core`.
 
 extern crate futures;
-extern crate tokio_core;
+extern crate tokio;
+extern crate tokio_io;
+extern crate bytes;
 extern crate env_logger;
 extern crate smallvec;
 

@@ -1,29 +1,26 @@
 extern crate tokio_coap;
+extern crate tokio;
 extern crate futures;
-extern crate tokio_core;
 extern crate env_logger;
 
 use std::net::SocketAddr;
 
 use futures::{future, Future, Stream, Sink};
-use tokio_core::net::UdpSocket;
-use tokio_core::reactor::Core;
+use tokio::net::{UdpFramed, UdpSocket};
 
+use tokio_coap::codec::CoapCodec;
 use tokio_coap::message::{Message, Mtype, Code};
 use tokio_coap::message::option::{Option, Options, UriPath};
 
 fn main() {
     drop(env_logger::init());
 
-    let mut core = Core::new().unwrap();
-    let handle = core.handle();
-
     let local_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
     let remote_addr: SocketAddr = "104.236.199.143:5683".parse().unwrap(); // coap.sh
 
-    let sock = UdpSocket::bind(&local_addr, &handle).unwrap();
+    let sock = UdpSocket::bind(&local_addr).unwrap();
 
-    let framed_socket = sock.framed(tokio_coap::codec::CoapCodec);
+    let framed_socket = UdpFramed::new(sock, CoapCodec);
 
     let mut opts = Options::new();
     opts.push(UriPath::new("ip".to_owned()));
@@ -39,26 +36,27 @@ fn main() {
     };
 
     let client =  framed_socket
-        .send((remote_addr, Some(request)))
+        .send((request, remote_addr))
         .and_then(|x| {
             x
             .take(1) // we expect 1 response packet, TODO: check that packet is response
-            .for_each(|(_addr, msg)| {
-                match msg {
-                    Some(msg) => {
-                        match msg.code {
-                            Code::Content => {
-                                println!("{}", String::from_utf8_lossy(&msg.payload));
-                            },
-                            _ => println!("Unexpeted Response"),
-                        }
+            .for_each(|(msg, _addr)| {
+                match msg.code {
+                    Code::Content => {
+                        println!("{}", String::from_utf8_lossy(&msg.payload));
                     },
-                    None => println!("Got un-parsable packet"),
-                }
+                    _ => println!("Unexpeted Response"),
+                };
 
                 future::ok(())
             })
+        })
+        .map_err(|err| {
+            println!("error = {:?}", err);
         });
 
-    core.run(client).expect("run core");
+
+    tokio::run(client);
+
+    println!("[exit]");
 }

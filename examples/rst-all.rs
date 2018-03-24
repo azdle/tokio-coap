@@ -1,60 +1,51 @@
 extern crate tokio_coap;
-extern crate futures;
-extern crate tokio_core;
+extern crate tokio;
 extern crate env_logger;
 
 use std::net::SocketAddr;
 
-use futures::{Stream, Sink};
-use tokio_core::net::UdpSocket;
-use tokio_core::reactor::Core;
+use tokio::prelude::{Future, Stream, Sink};
+use tokio::net::{UdpFramed, UdpSocket};
 
+use tokio_coap::codec::CoapCodec;
 use tokio_coap::message::{Message, Mtype, Code};
 use tokio_coap::message::option::Options;
 
 fn main() {
     drop(env_logger::init());
 
-    let mut core = Core::new().unwrap();
-    let handle = core.handle();
-
     let addr: SocketAddr = "0.0.0.0:5683".parse().unwrap();
 
-    let sock = UdpSocket::bind(&addr, &handle).unwrap();
+    let sock = UdpSocket::bind(&addr).unwrap();
 
-    let (sink, stream) = sock.framed(tokio_coap::codec::CoapCodec).split();
+    let (sink, stream) = UdpFramed::new(sock, CoapCodec).split();
 
-    let stream = stream.map(|(addr, request)| {
+    let stream = stream.filter_map(|(request, addr)| {
         println!("--> {:?}", request);
 
-        if let Some(request) = request {
-            match request.mtype {
-                Mtype::Confirmable | Mtype::NonConfirmable => {
-                    let reply = Message {
-                        version: 1,
-                        mtype: Mtype::Acknowledgement,
-                        code: Code::NotImplemented,
-                        mid: request.mid,
-                        token: request.token.clone(),
-                        options: Options::new(),
-                        payload: vec![],
-                    };
+        match request.mtype {
+            Mtype::Confirmable | Mtype::NonConfirmable => {
+                let reply = Message {
+                    version: 1,
+                    mtype: Mtype::Acknowledgement,
+                    code: Code::NotImplemented,
+                    mid: request.mid,
+                    token: request.token.clone(),
+                    options: Options::new(),
+                    payload: vec![],
+                };
 
-                    println!("<-- {:?}", reply);
+                println!("<-- {:?}", reply);
 
-                    (addr, Some(reply))
-                }
-                _ => {
-                    println!("<-X Not replying to message of type: {:?}", request.mtype);
-                    (addr, None)
-                }
+                Some((reply, addr))
             }
-        } else {
-            println!("<-X Not replying to invalid message");
-            (addr, None)
+            _ => {
+                println!("<-X Not replying to message of type: {:?}", request.mtype);
+                None
+            }
         }
     });
 
-    let sock = sink.send_all(stream);
-    drop(core.run(sock));
+    let server = sink.send_all(stream);
+    tokio::run(server.map(|_| ()).map_err(|e| println!("error = {:?}", e)));
 }

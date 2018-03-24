@@ -1,30 +1,33 @@
 use std::io;
-use std::net::SocketAddr;
 use std::option::Option;
 
-use tokio_core::net::UdpCodec;
+use tokio_io::codec::{Decoder,Encoder};
+use bytes::BytesMut;
 
 use message::Message;
 
 pub struct CoapCodec;
 
-impl UdpCodec for CoapCodec {
-    type In = (SocketAddr, Option<Message>);
-    type Out = (SocketAddr, Option<Message>);
+impl Encoder for CoapCodec {
+    type Item = Message;
+    type Error = io::Error;
 
-    fn decode(&mut self, addr: &SocketAddr, buf: &[u8]) -> io::Result<Self::In> {
-        match Message::from_bytes(buf) {
-            Ok(msg) => Ok((*addr, Some(msg))),
-            Err(_) => Ok((*addr, None)),
-        }
+    fn encode(&mut self, msg: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let bytes = msg.to_bytes().unwrap();
+        dst.extend(bytes);
+
+        Ok(())
     }
+}
 
-    fn encode(&mut self, (addr, mmsg): Self::Out, into: &mut Vec<u8>) -> SocketAddr {
-        if let Some(msg) = mmsg {
-            let bytes = msg.to_bytes().unwrap();
-            into.extend(bytes);
-        };
+impl Decoder for CoapCodec {
+    type Item = Message;
+    type Error = io::Error;
 
-        addr
+    fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        match Message::from_bytes(&buf) {
+            Ok(msg) => Ok(Some(msg)),
+            Err(_) => Ok(None),
+        }
     }
 }

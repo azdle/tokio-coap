@@ -10,7 +10,9 @@ built on top of tokio-core.
 """
 
 [dependencies]
-futures = "0.1.17"
-tokio-core = "0.1.10"
+futures = "0.1.19"
+tokio = "0.1.4"
+tokio-io = "0.1.6"
+bytes = "0.4.5"
 env_logger = "0.4.3"
 smallvec = "0.5.0"

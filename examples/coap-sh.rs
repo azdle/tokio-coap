@@ -1,14 +1,13 @@
 extern crate tokio_coap;
-extern crate futures;
-extern crate tokio_core;
+extern crate tokio;
 extern crate env_logger;
 
 use std::net::SocketAddr;
 
-use futures::{Stream, Sink};
-use tokio_core::net::UdpSocket;
-use tokio_core::reactor::Core;
+use tokio::prelude::{Future, Stream, Sink};
+use tokio::net::{UdpFramed, UdpSocket};
 
+use tokio_coap::codec::CoapCodec;
 use tokio_coap::message::{Mtype, Code};
 use tokio_coap::message::Code::{Content, NotImplemented};
 use tokio_coap::message::option::UriPath;
@@ -16,48 +15,40 @@ use tokio_coap::message::option::UriPath;
 fn main() {
     drop(env_logger::init());
 
-    let mut core = Core::new().unwrap();
-    let handle = core.handle();
-
     let addr: SocketAddr = "0.0.0.0:5683".parse().unwrap();
 
-    let sock = UdpSocket::bind(&addr, &handle).unwrap();
+    let sock = UdpSocket::bind(&addr).unwrap();
 
-    let (sink, stream) = sock.framed(tokio_coap::codec::CoapCodec).split();
+    let (sink, stream) = UdpFramed::new(sock, CoapCodec).split();
 
-    let stream = stream.map(|(addr, req)| {
-        println!("--> {:?}", req);
+    let stream = stream.filter_map(|(mut request, addr)| {
+        println!("--> {:?}", request);
 
-        if let Some(mut req) = req {
-            match req.mtype {
-                Mtype::Confirmable | Mtype::NonConfirmable => {
-                    let path = req.options.get::<UriPath>();
-                    match (&req.code, &path) {
-                        (&Code::Get, &Some(ref p)) if p == &["ip".into()] => {
-                            (addr,
-                             Some(req.new_reply()
-                                .with_code(Content)
-                                .with_payload(addr.ip()
-                                                  .to_string()
-                                                  .as_bytes()
-                                                  .to_owned())))
-                        }
-                        _ => {
-                            (addr, Some(req.new_reply().with_code(NotImplemented)))
-                        }
+        match request.mtype {
+            Mtype::Confirmable | Mtype::NonConfirmable => {
+                let path = request.options.get::<UriPath>();
+                match (&request.code, &path) {
+                    (&Code::Get, &Some(ref p)) if p == &["ip".into()] => {
+                         Some((request.new_reply()
+                            .with_code(Content)
+                            .with_payload(addr.ip()
+                                              .to_string()
+                                              .as_bytes()
+                                              .to_owned()),
+                            addr))
+                    }
+                    _ => {
+                        Some((request.new_reply().with_code(NotImplemented), addr))
                     }
                 }
-                _ => {
-                    println!("<-X Not replying to message of type: {:?}", req.mtype);
-                    (addr, None)
-                }
             }
-        } else {
-            println!("<-X Not replying to invalid message");
-            (addr, None)
+            _ => {
+                println!("<-X Not replying to message of type: {:?}", request.mtype);
+                None
+            }
         }
     });
 
-    let sock = sink.send_all(stream);
-    drop(core.run(sock));
+    let server = sink.send_all(stream);
+    tokio::run(server.map(|_| ()).map_err(|e| println!("error = {:?}", e)));
 }
