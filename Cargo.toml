@@ -5,8 +5,8 @@ authors = ["Patrick Barrett <patrick@psbarrett.com>"]
 license = "MIT/Apache-2.0"
 repository = "https://github.com/azdle/tokio-coap"
 description = """
-Low-level protocol implementaion of the Constrained Application Prorocol (CoAP)
-built on top of tokio-core.
+An implementaion of the Constrained Application Prorocol (CoAP) built on top of
+tokio.
 """
 
 [dependencies]
