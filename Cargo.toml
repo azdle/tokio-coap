@@ -1,0 +1,21 @@
+[package]
+name = "tokio-coap"
+version = "0.2.0"
+authors = ["Patrick Barrett <patrick@psbarrett.com>"]
+license = "MIT/Apache-2.0"
+repository = "https://github.com/azdle/tokio-coap"
+description = """
+Low-level protocol implementaion of the Constrained Application Prorocol (CoAP)
+built on top of tokio-core.
+"""
+
+[dependencies]
+futures = "0.1.19"
+tokio = "0.1.4"
+tokio-io = "0.1.6"
+bytes = "0.4.5"
+smallvec = "0.5.0"
+
+[dev-dependencies]
+log = "0.4.1"
+pretty_env_logger = "0.2.2"
