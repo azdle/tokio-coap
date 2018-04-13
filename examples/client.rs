@@ -1,5 +1,6 @@
 extern crate tokio_coap;
 extern crate tokio;
+extern crate tokio_dns;
 extern crate futures;
 #[macro_use]
 extern crate log;
@@ -22,52 +23,61 @@ use tokio_coap::message::option::{Option, Options, UriPath};
 fn main() {
     pretty_env_logger::init();
 
-    let local_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
-    let remote_addr: SocketAddr = "104.236.199.143:5683".parse().unwrap(); // coap.sh
+    let local_addr = "0.0.0.0:0".parse().unwrap();
+    let remote_host = "coap.sh";
+    let remote_port = 5683;
 
-    let sock = UdpSocket::bind(&local_addr).unwrap();
+    let client = tokio_dns::resolve::<&str>(remote_host)
+        .map_err(|_| error!("Failed to lookup to host"))
+        .and_then(move |remote_ip| {
+            let remote_addr = SocketAddr::new(remote_ip[0], remote_port);
 
-    let framed_socket = UdpFramed::new(sock, CoapCodec);
+            let sock = UdpSocket::bind(&local_addr).unwrap();
 
-    let mut opts = Options::new();
-    opts.push(UriPath::new("ip".to_owned()));
+            let framed_socket = UdpFramed::new(sock, CoapCodec);
 
-    let request = Message {
-        version: 1,
-        mtype: Mtype::Confirmable,
-        code: Code::Get,
-        mid: 5234,
-        token: vec![3,36,254,64,0].into(),
-        options: opts,
-        payload: vec![]
-    };
+            let mut opts = Options::new();
+            opts.push(UriPath::new("ip".to_owned()));
 
-    info!("sending request");
-    let client =  framed_socket
-        .send((request, remote_addr))
-        .and_then(|sock| {
-            let timeout_time = Instant::now() + Duration::from_millis(1000);
-            sock
-                .take_while(|&(ref msg, ref _addr)| {
-                    match msg.code {
-                        Code::Content => {
-                            info!("{}", String::from_utf8_lossy(&msg.payload));
-                            ok(false) // done
-                        },
-                        _ => {
-                            warn!("Unexpeted Response");
-                            ok(true) // keep listening for packets
-                        },
-                    }
+            let request = Message {
+                version: 1,
+                mtype: Mtype::Confirmable,
+                code: Code::Get,
+                mid: 5234,
+                token: vec![3,36,254,64,0].into(),
+                options: opts,
+                payload: vec![]
+            };
+
+            info!("sending request");
+            let client =  framed_socket
+                .send((request, remote_addr))
+                .and_then(|sock| {
+                    let timeout_time = Instant::now() + Duration::from_millis(1000);
+                    sock
+                        .take_while(|&(ref msg, ref _addr)| {
+                            match msg.code {
+                                Code::Content => {
+                                    info!("{}", String::from_utf8_lossy(&msg.payload));
+                                    ok(false) // done
+                                },
+                                _ => {
+                                    warn!("Unexpeted Response");
+                                    ok(true) // keep listening for packets
+                                },
+                            }
+                        })
+                        .for_each(|(_msg, _addr)| ok(()))
+                        .deadline(timeout_time)
+                        .map_err(|_| Error::Timeout)
                 })
-                .for_each(|(_msg, _addr)| ok(()))
-                .deadline(timeout_time)
-                .map_err(|_| Error::Timeout)
-        })
-        .map_err(|err| {
-            error!("error = {:?}", err);
-        });
+                .map_err(|err| {
+                    error!("error = {:?}", err);
+                });
 
+            client
+        }
+    );
 
     tokio::run(client);
 
