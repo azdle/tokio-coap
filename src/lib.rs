@@ -9,4 +9,5 @@ extern crate bytes;
 extern crate smallvec;
 
 pub mod codec;
+pub mod error;
 pub mod message;

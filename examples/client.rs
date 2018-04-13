@@ -15,6 +15,7 @@ use tokio::net::{UdpFramed, UdpSocket};
 use tokio::util::FutureExt;
 
 use tokio_coap::codec::CoapCodec;
+use tokio_coap::error::Error;
 use tokio_coap::message::{Message, Mtype, Code};
 use tokio_coap::message::option::{Option, Options, UriPath};
 
@@ -61,7 +62,7 @@ fn main() {
                 })
                 .for_each(|(_msg, _addr)| ok(()))
                 .deadline(timeout_time)
-                .map_err(|_| ::std::io::Error::new(::std::io::ErrorKind::Other, "oh no!"))
+                .map_err(|_| Error::Io(::std::io::Error::new(::std::io::ErrorKind::Other, "oh no!")))
         })
         .map_err(|err| {
             error!("error = {:?}", err);
