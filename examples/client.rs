@@ -62,7 +62,7 @@ fn main() {
                 })
                 .for_each(|(_msg, _addr)| ok(()))
                 .deadline(timeout_time)
-                .map_err(|_| Error::Io(::std::io::Error::new(::std::io::ErrorKind::Other, "oh no!")))
+                .map_err(|_| Error::Timeout)
         })
         .map_err(|err| {
             error!("error = {:?}", err);
