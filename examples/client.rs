@@ -6,9 +6,13 @@ extern crate log;
 extern crate pretty_env_logger;
 
 use std::net::SocketAddr;
+use std::time::{Duration, Instant};
 
-use futures::{future, Future, Stream, Sink};
+use futures::{Future, Stream, Sink};
+use futures::future::ok;
+
 use tokio::net::{UdpFramed, UdpSocket};
+use tokio::util::FutureExt;
 
 use tokio_coap::codec::CoapCodec;
 use tokio_coap::message::{Message, Mtype, Code};
@@ -40,19 +44,24 @@ fn main() {
     info!("sending request");
     let client =  framed_socket
         .send((request, remote_addr))
-        .and_then(|x| {
-            x
-            .take(1) // we expect 1 response packet, TODO: check that packet is response
-            .for_each(|(msg, _addr)| {
-                match msg.code {
-                    Code::Content => {
-                        info!("{}", String::from_utf8_lossy(&msg.payload));
-                    },
-                    _ => warn!("Unexpeted Response"),
-                };
-
-                future::ok(())
-            })
+        .and_then(|sock| {
+            let timeout_time = Instant::now() + Duration::from_millis(1000);
+            sock
+                .take_while(|&(ref msg, ref _addr)| {
+                    match msg.code {
+                        Code::Content => {
+                            info!("{}", String::from_utf8_lossy(&msg.payload));
+                            ok(false) // done
+                        },
+                        _ => {
+                            warn!("Unexpeted Response");
+                            ok(true) // keep listening for packets
+                        },
+                    }
+                })
+                .for_each(|(_msg, _addr)| ok(()))
+                .deadline(timeout_time)
+                .map_err(|_| ::std::io::Error::new(::std::io::ErrorKind::Other, "oh no!"))
         })
         .map_err(|err| {
             error!("error = {:?}", err);
