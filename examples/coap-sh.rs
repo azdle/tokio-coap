@@ -1,6 +1,8 @@
 extern crate tokio_coap;
 extern crate tokio;
-extern crate env_logger;
+#[macro_use]
+extern crate log;
+extern crate pretty_env_logger;
 
 use std::net::SocketAddr;
 
@@ -13,7 +15,7 @@ use tokio_coap::message::Code::{Content, NotImplemented};
 use tokio_coap::message::option::UriPath;
 
 fn main() {
-    drop(env_logger::init());
+    pretty_env_logger::init();
 
     let addr: SocketAddr = "0.0.0.0:5683".parse().unwrap();
 
@@ -22,7 +24,7 @@ fn main() {
     let (sink, stream) = UdpFramed::new(sock, CoapCodec).split();
 
     let stream = stream.filter_map(|(mut request, addr)| {
-        println!("--> {:?}", request);
+        info!("--> {:?}", request);
 
         match request.mtype {
             Mtype::Confirmable | Mtype::NonConfirmable => {
@@ -43,12 +45,12 @@ fn main() {
                 }
             }
             _ => {
-                println!("<-X Not replying to message of type: {:?}", request.mtype);
+                warn!("<-X Not replying to message of type: {:?}", request.mtype);
                 None
             }
         }
     });
 
     let server = sink.send_all(stream);
-    tokio::run(server.map(|_| ()).map_err(|e| println!("error = {:?}", e)));
+    tokio::run(server.map(|_| ()).map_err(|e| error!("error = {:?}", e)));
 }

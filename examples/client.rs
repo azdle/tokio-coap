@@ -1,7 +1,9 @@
 extern crate tokio_coap;
 extern crate tokio;
 extern crate futures;
-extern crate env_logger;
+#[macro_use]
+extern crate log;
+extern crate pretty_env_logger;
 
 use std::net::SocketAddr;
 
@@ -13,7 +15,7 @@ use tokio_coap::message::{Message, Mtype, Code};
 use tokio_coap::message::option::{Option, Options, UriPath};
 
 fn main() {
-    drop(env_logger::init());
+    pretty_env_logger::init();
 
     let local_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
     let remote_addr: SocketAddr = "104.236.199.143:5683".parse().unwrap(); // coap.sh
@@ -35,6 +37,7 @@ fn main() {
         payload: vec![]
     };
 
+    info!("sending request");
     let client =  framed_socket
         .send((request, remote_addr))
         .and_then(|x| {
@@ -43,20 +46,20 @@ fn main() {
             .for_each(|(msg, _addr)| {
                 match msg.code {
                     Code::Content => {
-                        println!("{}", String::from_utf8_lossy(&msg.payload));
+                        info!("{}", String::from_utf8_lossy(&msg.payload));
                     },
-                    _ => println!("Unexpeted Response"),
+                    _ => warn!("Unexpeted Response"),
                 };
 
                 future::ok(())
             })
         })
         .map_err(|err| {
-            println!("error = {:?}", err);
+            error!("error = {:?}", err);
         });
 
 
     tokio::run(client);
 
-    println!("[exit]");
+    info!("[exit]");
 }
