@@ -35,7 +35,7 @@ impl Options {
             .push(raw_value);
     }
 
-    pub fn get<T: Option>(&mut self) -> StdOption<Vec<T>> {
+    pub fn get<T: Option>(&self) -> StdOption<Vec<T>> {
         self.map
             .get(&<T as Option>::NUMBER)
             .map(|o| o.iter()
@@ -43,7 +43,7 @@ impl Options {
                       .collect())
     }
 
-    pub fn get_raw<T: Option>(&mut self) -> StdOption<Vec<Vec<u8>>> {
+    pub fn get_raw<T: Option>(&self) -> StdOption<Vec<Vec<u8>>> {
         self.map
             .get(&<T as Option>::NUMBER)
             .map(|v| v.to_owned() )
