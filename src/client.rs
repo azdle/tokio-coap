@@ -4,7 +4,8 @@ use error::Error;
 use message::{Message, Code};
 use message::option::{Option, Options, UriPath, UriHost, UriQuery};
 
-use std::net::IpAddr;
+use std::borrow::Cow;
+use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
 
 use futures::prelude::*;
@@ -25,26 +26,34 @@ pub struct Client {
     msg: Message,
 }
 
-/// TODO: Return a Result
-fn depercent(s: &str) -> String {
-    percent_decode(s.as_bytes()).decode_utf8().unwrap().into_owned()
+fn depercent(s: &str) -> Result<String, Error> {
+    percent_decode(s.as_bytes())
+        .decode_utf8()
+        .map(Cow::into_owned)
+        .map_err(Error::url_parsing)
 }
 
 /// RFC 7252: 6.4.  Decomposing URIs into Options
-/// TODO: Missing checks and options, also should return a Result
-fn decompose(uri: Uri) -> (Endpoint, Options) {
+fn decompose(uri: Uri) -> Result<(Endpoint, Options), Error> {
     let mut options = Options::new();
 
     // Step 3, TODO: Support coaps
-    assert_eq!(uri.scheme, "coap");
+    match &*uri.scheme {
+        "coap" => (),
+        "coaps" => Err(Error::url_parsing("the coaps scheme is currently unsupported"))?,
+        other => Err(Error::url_parsing(format!("{} is not a coap scheme", other)))?,
+    }
 
     // Step 4
-    assert_eq!(uri.fragment, None);
+    if uri.fragment.is_some() {
+        Err(Error::url_parsing("cannot specify fragment on coap url"))?;
+    }
 
-    // Step 5
-    let mut host = uri.host.expect("host");
-    if host.parse::<IpAddr>().is_err() {
-        host = depercent(&host.to_lowercase());
+    // Step 5, TODO: ensure the literal ip parsing is using the correct format
+    let mut host = uri.host.ok_or(Error::url_parsing("missing host, a coap url must be absolute"))?;
+    let ip = host.parse::<IpAddr>().ok();
+    if ip.is_none() {
+        host = depercent(&host.to_lowercase())?;
         options.push(UriHost::new(host.clone()));
     }
 
@@ -53,20 +62,26 @@ fn decompose(uri: Uri) -> (Endpoint, Options) {
 
     // Step 7 & 8
     let path = uri.path.unwrap_or("/".to_owned());
-    assert!(path.starts_with('/'));
+    if !path.starts_with('/') {
+        Err(Error::url_parsing("path does not start with /, a coap url must be absolute"))?;
+    }
     for segment in path.split('/').skip(1) {
-        options.push(UriPath::new(depercent(segment)));
+        options.push(UriPath::new(depercent(segment)?));
     }
 
     // Step 9
     let query = uri.query.unwrap_or("".to_owned());
     if !query.is_empty() {
         for segment in query.split('&') {
-            options.push(UriQuery::new(depercent(segment)));
+            options.push(UriQuery::new(depercent(segment)?));
         }
     }
 
-    (Endpoint::Unresolved(host, port), options)
+    if let Some(ip) = ip {
+        Ok((Endpoint::Resolved(SocketAddr::new(ip, port)), options))
+    } else {
+        Ok((Endpoint::Unresolved(host, port), options))
+    }
 }
 
 impl Client {
@@ -77,8 +92,16 @@ impl Client {
         }
     }
 
-    pub fn get(url: &str) -> Client {
-        Client::new().with_url(Uri::new(url).unwrap())
+    pub fn get(url: &str) -> Result<Client, Error> {
+        let mut client = Client::new();
+        let url = Uri::new(url).map_err(Error::url_parsing)?;
+
+        let (endpoint, options) = decompose(url)?;
+
+        client.set_endpoint(endpoint);
+        client.msg.options = options;
+
+        Ok(client)
     }
 
     pub fn set_endpoint(&mut self, endpoint: Endpoint) {
@@ -87,25 +110,6 @@ impl Client {
 
     pub fn with_endpoint(mut self, endpoint: Endpoint) -> Self {
         self.set_endpoint(endpoint);
-
-        self
-    }
-
-    pub fn set_message(&mut self, msg: Message) {
-        self.msg = msg;
-    }
-
-    pub fn with_message(mut self, msg: Message) -> Self {
-        self.set_message(msg);
-
-        self
-    }
-
-    pub fn with_url(mut self, url: Uri) -> Self {
-        let (endpoint, options) = decompose(url);
-
-        self.set_endpoint(endpoint);
-        self.msg.options = options;
 
         self
     }
