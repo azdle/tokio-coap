@@ -30,7 +30,7 @@ fn depercent(s: &str) -> Result<String, Error> {
     percent_decode(s.as_bytes())
         .decode_utf8()
         .map(Cow::into_owned)
-        .map_err(Error::url_parsing)
+        .map_err(Error::url)
 }
 
 /// RFC 7252: 6.4.  Decomposing URIs into Options
@@ -40,17 +40,17 @@ fn decompose(uri: Uri) -> Result<(Endpoint, Options), Error> {
     // Step 3, TODO: Support coaps
     match &*uri.scheme {
         "coap" => (),
-        "coaps" => Err(Error::url_parsing("the coaps scheme is currently unsupported"))?,
-        other => Err(Error::url_parsing(format!("{} is not a coap scheme", other)))?,
+        "coaps" => Err(Error::url("the coaps scheme is currently unsupported"))?,
+        other => Err(Error::url(format!("{} is not a coap scheme", other)))?,
     }
 
     // Step 4
     if uri.fragment.is_some() {
-        Err(Error::url_parsing("cannot specify fragment on coap url"))?;
+        Err(Error::url("cannot specify fragment on coap url"))?;
     }
 
     // Step 5, TODO: ensure the literal ip parsing is using the correct format
-    let mut host = uri.host.ok_or(Error::url_parsing("missing host, a coap url must be absolute"))?;
+    let mut host = uri.host.ok_or(Error::url("missing host, a coap url must be absolute"))?;
     let ip = host.parse::<IpAddr>().ok();
     if ip.is_none() {
         host = depercent(&host.to_lowercase())?;
@@ -63,7 +63,7 @@ fn decompose(uri: Uri) -> Result<(Endpoint, Options), Error> {
     // Step 7 & 8
     let path = uri.path.unwrap_or("/".to_owned());
     if !path.starts_with('/') {
-        Err(Error::url_parsing("path does not start with /, a coap url must be absolute"))?;
+        Err(Error::url("path does not start with /, a coap url must be absolute"))?;
     }
     for segment in path.split('/').skip(1) {
         options.push(UriPath::new(depercent(segment)?));
@@ -94,7 +94,7 @@ impl Client {
 
     pub fn get(url: &str) -> Result<Client, Error> {
         let mut client = Client::new();
-        let url = Uri::new(url).map_err(Error::url_parsing)?;
+        let url = Uri::new(url).map_err(Error::url)?;
 
         let (endpoint, options) = decompose(url)?;
 

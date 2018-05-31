@@ -14,15 +14,15 @@ pub enum Error {
     /// Generic error when attempting to parse a url
     // TODO: Some of the specific errors should be named, maybe a separate enum
     // for the errors encountered during url parsing should be used
-    UrlParsing(Box<StdError + Send + Sync>),
+    Url(Box<StdError + Send + Sync>),
 
     #[doc(hidden)]
     __AlwaysWildcardMatchThisListWillChange,
 }
 
 impl Error {
-    pub(crate) fn url_parsing(err: impl Into<Box<StdError + Send + Sync>>) -> Error {
-        Error::UrlParsing(err.into())
+    pub(crate) fn url(err: impl Into<Box<StdError + Send + Sync>>) -> Error {
+        Error::Url(err.into())
     }
 }
 
