@@ -1,6 +1,6 @@
 use codec::CoapCodec;
 use Endpoint;
-use error::Error;
+use error::{Error, UrlError};
 use message::{Message, Code};
 use message::option::{Option, Options, UriPath, UriHost, UriQuery};
 
@@ -26,31 +26,30 @@ pub struct Client {
     msg: Message,
 }
 
-fn depercent(s: &str) -> Result<String, Error> {
+fn depercent(s: &str) -> Result<String, UrlError> {
     percent_decode(s.as_bytes())
         .decode_utf8()
         .map(Cow::into_owned)
-        .map_err(Error::url)
+        .map_err(UrlError::NonUtf8)
 }
 
 /// RFC 7252: 6.4.  Decomposing URIs into Options
-fn decompose(uri: Uri) -> Result<(Endpoint, Options), Error> {
+fn decompose(uri: Uri) -> Result<(Endpoint, Options), UrlError> {
     let mut options = Options::new();
 
     // Step 3, TODO: Support coaps
     match &*uri.scheme {
         "coap" => (),
-        "coaps" => Err(Error::url("the coaps scheme is currently unsupported"))?,
-        other => Err(Error::url(format!("{} is not a coap scheme", other)))?,
+        other => Err(UrlError::UnsupportedScheme(other.into()))?,
     }
 
     // Step 4
     if uri.fragment.is_some() {
-        Err(Error::url("cannot specify fragment on coap url"))?;
+        Err(UrlError::FragmentSpecified)?;
     }
 
     // Step 5, TODO: ensure the literal ip parsing is using the correct format
-    let mut host = uri.host.ok_or(Error::url("missing host, a coap url must be absolute"))?;
+    let mut host = uri.host.ok_or(UrlError::NonAbsolutePath)?;
     let ip = host.parse::<IpAddr>().ok();
     if ip.is_none() {
         host = depercent(&host.to_lowercase())?;
@@ -63,7 +62,7 @@ fn decompose(uri: Uri) -> Result<(Endpoint, Options), Error> {
     // Step 7 & 8
     let path = uri.path.unwrap_or("/".to_owned());
     if !path.starts_with('/') {
-        Err(Error::url("path does not start with /, a coap url must be absolute"))?;
+        Err(UrlError::NonAbsolutePath)?;
     }
     for segment in path.split('/').skip(1) {
         options.push(UriPath::new(depercent(segment)?));
@@ -94,7 +93,7 @@ impl Client {
 
     pub fn get(url: &str) -> Result<Client, Error> {
         let mut client = Client::new();
-        let url = Uri::new(url).map_err(Error::url)?;
+        let url = Uri::new(url).map_err(UrlError::Parse)?;
 
         let (endpoint, options) = decompose(url)?;
 

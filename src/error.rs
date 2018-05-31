@@ -1,6 +1,24 @@
 use message::Error as MessageError;
 use std::io::Error as IoError;
-use std::error::Error as StdError;
+use std::str::Utf8Error;
+use uri::ParseError;
+
+#[derive(Debug)]
+pub enum UrlError {
+    /// The supplied string could not be parsed as a Uri
+    Parse(ParseError),
+    /// The path was not a valid utf8 string after percent-decoding
+    NonUtf8(Utf8Error),
+    /// The scheme was not coap
+    UnsupportedScheme(String),
+    /// The Uri specified a non-absolute path
+    NonAbsolutePath,
+    /// The Uri included a fragment
+    FragmentSpecified,
+
+    #[doc(hidden)]
+    __AlwaysWildcardMatchThisListMayChange,
+}
 
 /// All errors returned from this crate.
 #[derive(Debug)]
@@ -11,18 +29,16 @@ pub enum Error {
     Message(MessageError),
     /// The system IO returned an error.
     Io(IoError),
-    /// Generic error when attempting to parse a url
-    // TODO: Some of the specific errors should be named, maybe a separate enum
-    // for the errors encountered during url parsing should be used
-    Url(Box<StdError + Send + Sync>),
+    /// Error when attempting to parse a url
+    Url(UrlError),
 
     #[doc(hidden)]
     __AlwaysWildcardMatchThisListWillChange,
 }
 
-impl Error {
-    pub(crate) fn url(err: impl Into<Box<StdError + Send + Sync>>) -> Error {
-        Error::Url(err.into())
+impl From<UrlError> for Error {
+    fn from(e: UrlError) -> Error {
+        Error::Url(e)
     }
 }
 
