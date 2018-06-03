@@ -9,6 +9,7 @@ use futures::future::ok;
 
 fn main() {
     let request = Client::get("coap://coap.sh/ip")
+        .unwrap()
         .send()
         .and_then(|response| {
             println!("{}", String::from_utf8_lossy(&response.payload));

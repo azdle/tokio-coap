@@ -1,10 +1,11 @@
 use codec::CoapCodec;
 use Endpoint;
-use error::Error;
-use message::{Message, Mtype, Code};
-use message::option::{Option, Options, UriPath};
+use error::{Error, UrlError};
+use message::{Message, Code};
+use message::option::{Option, Options, UriPath, UriHost, UriQuery};
 
-use std::net::SocketAddr;
+use std::borrow::Cow;
+use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
 
 use futures::prelude::*;
@@ -12,7 +13,8 @@ use futures::prelude::*;
 use tokio::net::{UdpSocket, UdpFramed};
 use tokio::util::FutureExt;
 
-use tokio_dns;
+use percent_encoding::percent_decode;
+use uri::Uri;
 
 /// An alias for the futures produced by this library.
 pub type IoFuture<T> = Box<Future<Item = T, Error = Error> + Send>;
@@ -24,6 +26,63 @@ pub struct Client {
     msg: Message,
 }
 
+fn depercent(s: &str) -> Result<String, UrlError> {
+    percent_decode(s.as_bytes())
+        .decode_utf8()
+        .map(Cow::into_owned)
+        .map_err(UrlError::NonUtf8)
+}
+
+/// RFC 7252: 6.4.  Decomposing URIs into Options
+fn decompose(uri: Uri) -> Result<(Endpoint, Options), UrlError> {
+    let mut options = Options::new();
+
+    // Step 3, TODO: Support coaps
+    match &*uri.scheme {
+        "coap" => (),
+        other => Err(UrlError::UnsupportedScheme(other.into()))?,
+    }
+
+    // Step 4
+    if uri.fragment.is_some() {
+        Err(UrlError::FragmentSpecified)?;
+    }
+
+    // Step 5, TODO: ensure the literal ip parsing is using the correct format
+    let mut host = uri.host.ok_or(UrlError::NonAbsolutePath)?;
+    let ip = host.parse::<IpAddr>().ok();
+    if ip.is_none() {
+        host = depercent(&host.to_lowercase())?;
+        options.push(UriHost::new(host.clone()));
+    }
+
+    // Step 6
+    let port = uri.port.unwrap_or(5683);
+
+    // Step 7 & 8
+    let path = uri.path.unwrap_or("/".to_owned());
+    if !path.starts_with('/') {
+        Err(UrlError::NonAbsolutePath)?;
+    }
+    for segment in path.split('/').skip(1) {
+        options.push(UriPath::new(depercent(segment)?));
+    }
+
+    // Step 9
+    let query = uri.query.unwrap_or("".to_owned());
+    if !query.is_empty() {
+        for segment in query.split('&') {
+            options.push(UriQuery::new(depercent(segment)?));
+        }
+    }
+
+    if let Some(ip) = ip {
+        Ok((Endpoint::Resolved(SocketAddr::new(ip, port)), options))
+    } else {
+        Ok((Endpoint::Unresolved(host, port), options))
+    }
+}
+
 impl Client {
     pub fn new() -> Client {
         Client {
@@ -32,9 +91,16 @@ impl Client {
         }
     }
 
-    pub fn get(url: &str) -> Client {
-        Client::new()
-            .with_endpoint(url.parse().unwrap())
+    pub fn get(url: &str) -> Result<Client, Error> {
+        let mut client = Client::new();
+        let url = Uri::new(url).map_err(UrlError::Parse)?;
+
+        let (endpoint, options) = decompose(url)?;
+
+        client.set_endpoint(endpoint);
+        client.msg.options = options;
+
+        Ok(client)
     }
 
     pub fn set_endpoint(&mut self, endpoint: Endpoint) {
@@ -48,37 +114,19 @@ impl Client {
     }
 
     pub fn send(self) -> IoFuture<Message> {
-        //hacks
-        let remote_host = "coap.sh";
-        let remote_port = 5683;
-
         let local_addr = "0.0.0.0:0".parse().unwrap();
 
-        let client_request = tokio_dns::resolve::<&str>(remote_host)
-            .map_err(|_| Error::Timeout)
-            .and_then(move |remote_ip| {
-                let remote_addr = SocketAddr::new(remote_ip[0], remote_port);
-
+        let Self { endpoint, msg } = self;
+        let client_request = endpoint
+            .resolve()
+            .and_then(move |remote_addr| {
                 let sock = UdpSocket::bind(&local_addr).unwrap();
 
                 let framed_socket = UdpFramed::new(sock, CoapCodec);
 
-                let mut opts = Options::new();
-                opts.push(UriPath::new("ip".to_owned()));
-
-                let request = Message {
-                    version: 1,
-                    mtype: Mtype::Confirmable,
-                    code: Code::Get,
-                    mid: 5234,
-                    token: vec![3,36,254,64,0].into(),
-                    options: opts,
-                    payload: vec![]
-                };
-
                 info!("sending request");
                 let client =  framed_socket
-                    .send((request, remote_addr))
+                    .send((msg, remote_addr))
                     .and_then(|sock| {
                         let timeout_time = Instant::now() + Duration::from_millis(1000);
                         sock
