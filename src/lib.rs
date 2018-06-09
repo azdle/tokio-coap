@@ -10,7 +10,7 @@ extern crate bytes;
 extern crate smallvec;
 #[macro_use]
 extern crate log;
-extern crate uri;
+extern crate url;
 extern crate percent_encoding;
 
 pub mod client;

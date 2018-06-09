@@ -17,7 +17,7 @@ tokio-dns-unofficial = "0.3.0"
 bytes = "0.4.5"
 smallvec = "0.5.0"
 log = "0.4.1"
-uri = "0.3.0"
+url = "1.7.0"
 percent-encoding = "1.0.1"
 
 [dev-dependencies]

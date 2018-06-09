@@ -1,7 +1,7 @@
 use message::Error as MessageError;
 use std::io::Error as IoError;
 use std::str::Utf8Error;
-use uri::ParseError;
+use url::ParseError;
 
 #[derive(Debug)]
 pub enum UrlError {

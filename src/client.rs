@@ -14,7 +14,7 @@ use tokio::net::{UdpSocket, UdpFramed};
 use tokio::util::FutureExt;
 
 use percent_encoding::percent_decode;
-use uri::Uri;
+use url::Url;
 
 /// An alias for the futures produced by this library.
 pub type IoFuture<T> = Box<Future<Item = T, Error = Error> + Send>;
@@ -34,42 +34,38 @@ fn depercent(s: &str) -> Result<String, UrlError> {
 }
 
 /// RFC 7252: 6.4.  Decomposing URIs into Options
-fn decompose(uri: Uri) -> Result<(Endpoint, Options), UrlError> {
+fn decompose(url: Url) -> Result<(Endpoint, Options), UrlError> {
     let mut options = Options::new();
 
     // Step 3, TODO: Support coaps
-    match &*uri.scheme {
+    match url.scheme() {
         "coap" => (),
-        other => Err(UrlError::UnsupportedScheme(other.into()))?,
+        other => Err(UrlError::UnsupportedScheme(other.to_string()))?,
     }
 
     // Step 4
-    if uri.fragment.is_some() {
+    if url.fragment().is_some() {
         Err(UrlError::FragmentSpecified)?;
     }
 
     // Step 5, TODO: ensure the literal ip parsing is using the correct format
-    let mut host = uri.host.ok_or(UrlError::NonAbsolutePath)?;
+    let mut host = url.host_str().ok_or(UrlError::NonAbsolutePath)?.to_string();
     let ip = host.parse::<IpAddr>().ok();
     if ip.is_none() {
         host = depercent(&host.to_lowercase())?;
-        options.push(UriHost::new(host.clone()));
+        options.push(UriHost::new(host.to_string()));
     }
 
     // Step 6
-    let port = uri.port.unwrap_or(5683);
+    let port = url.port().unwrap_or(5683);
 
-    // Step 7 & 8
-    let path = uri.path.unwrap_or("/".to_owned());
-    if !path.starts_with('/') {
-        Err(UrlError::NonAbsolutePath)?;
-    }
-    for segment in path.split('/').skip(1) {
+    // Step 8
+    for segment in url.path_segments().ok_or(UrlError::NonAbsolutePath)? {
         options.push(UriPath::new(depercent(segment)?));
     }
 
     // Step 9
-    let query = uri.query.unwrap_or("".to_owned());
+    let query = url.query().unwrap_or("");
     if !query.is_empty() {
         for segment in query.split('&') {
             options.push(UriQuery::new(depercent(segment)?));
@@ -93,7 +89,7 @@ impl Client {
 
     pub fn get(url: &str) -> Result<Client, Error> {
         let mut client = Client::new();
-        let url = Uri::new(url).map_err(UrlError::Parse)?;
+        let url = Url::parse(url).map_err(UrlError::Parse)?;
 
         let (endpoint, options) = decompose(url)?;
 
