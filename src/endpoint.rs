@@ -9,6 +9,7 @@ use tokio_dns;
 use error::Error;
 use client::IoFuture;
 
+#[derive(Debug, PartialEq)]
 pub enum Endpoint {
     Unset,
     Resolved(SocketAddr),

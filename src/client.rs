@@ -5,7 +5,6 @@ use message::{Message, Code};
 use message::option::{Option, Options, UriPath, UriHost, UriQuery};
 
 use std::borrow::Cow;
-use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
 
 use futures::prelude::*;
@@ -34,7 +33,9 @@ fn depercent(s: &str) -> Result<String, UrlError> {
 }
 
 /// RFC 7252: 6.4.  Decomposing URIs into Options
-fn decompose(url: Url) -> Result<(Endpoint, Options), UrlError> {
+fn decompose(url: &Url) -> Result<(Endpoint, Options), UrlError> {
+    use url::Host;
+
     let mut options = Options::new();
 
     // Step 3, TODO: Support coaps
@@ -48,20 +49,25 @@ fn decompose(url: Url) -> Result<(Endpoint, Options), UrlError> {
         Err(UrlError::FragmentSpecified)?;
     }
 
-    // Step 5, TODO: ensure the literal ip parsing is using the correct format
-    let mut host = url.host_str().ok_or(UrlError::NonAbsolutePath)?.to_string();
-    let ip = host.parse::<IpAddr>().ok();
-    if ip.is_none() {
-        host = depercent(&host.to_lowercase())?;
-        options.push(UriHost::new(host.to_string()));
-    }
-
     // Step 6
     let port = url.port().unwrap_or(5683);
 
+    // Step 5
+    let endpoint = match url.host().ok_or(UrlError::NonAbsolutePath)? {
+        Host::Domain(domain) => {
+            let host = domain.to_lowercase();
+            options.push(UriHost::new(host.clone()));
+            Endpoint::Unresolved(host, port)
+        },
+        Host::Ipv4(ip) => Endpoint::Resolved((ip, port).into()),
+        Host::Ipv6(ip) => Endpoint::Resolved((ip, port).into()),
+    };
+
     // Step 8
-    for segment in url.path_segments().ok_or(UrlError::NonAbsolutePath)? {
-        options.push(UriPath::new(depercent(segment)?));
+    if url.path() != "" && url.path() != "/" {
+        for segment in url.path_segments().ok_or(UrlError::NonAbsolutePath)? {
+            options.push(UriPath::new(depercent(segment)?));
+        }
     }
 
     // Step 9
@@ -72,11 +78,7 @@ fn decompose(url: Url) -> Result<(Endpoint, Options), UrlError> {
         }
     }
 
-    if let Some(ip) = ip {
-        Ok((Endpoint::Resolved(SocketAddr::new(ip, port)), options))
-    } else {
-        Ok((Endpoint::Unresolved(host, port), options))
-    }
+    Ok((endpoint, options))
 }
 
 impl Client {
@@ -91,7 +93,7 @@ impl Client {
         let mut client = Client::new();
         let url = Url::parse(url).map_err(UrlError::Parse)?;
 
-        let (endpoint, options) = decompose(url)?;
+        let (endpoint, options) = decompose(&url)?;
 
         client.set_endpoint(endpoint);
         client.msg.options = options;
@@ -171,5 +173,119 @@ macro_rules! set_or_with {
 
             self
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::decompose;
+    use endpoint::Endpoint;
+    use message::option::{Option, Options, UriHost, UriPath, UriQuery};
+
+    // TODO: See below
+    use std::net::{IpAddr, /*Ipv4Addr,*/ Ipv6Addr, SocketAddr};
+
+    use url::Url;
+
+    #[test]
+    fn uri_decompose_normalization() {
+        let uri1 = Url::parse("coap://example.com:5683/~sensors/temp.xml").unwrap();
+        let uri2 = Url::parse("coap://EXAMPLE.com/%7Esensors/temp.xml").unwrap();
+        let uri3 = Url::parse("coap://EXAMPLE.com:/%7esensors/temp.xml").unwrap();
+
+        assert_eq!(decompose(&uri1).unwrap(), decompose(&uri2).unwrap());
+        assert_eq!(decompose(&uri2).unwrap(), decompose(&uri3).unwrap());
+    }
+
+    #[test]
+    fn uri_decompose_basic_ipv6() {
+        let uri = Url::parse("coap://[2001:db8::2:1]/").unwrap();
+
+        let sa_ref = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 2, 1)), 5683);
+        let opt_ref = Options::new();
+
+        let (endpoint, options) = decompose(&uri).unwrap();
+
+        assert_eq!(endpoint, Endpoint::Resolved(sa_ref));
+        assert_eq!(options, opt_ref);
+    }
+
+    #[test]
+    fn uri_decompose_basic_example_net() {
+        let uri = Url::parse("coap://example.net/").unwrap();
+
+        let opt_ref = {
+            let mut opts = Options::new();
+            opts.push(UriHost::new("example.net".to_string()));
+            opts
+        };
+
+        let (endpoint, options) = decompose(&uri).unwrap();
+
+        assert_eq!(endpoint, Endpoint::Unresolved("example.net".to_string(), 5683));
+        assert_eq!(options, opt_ref);
+    }
+
+    #[test]
+    fn uri_decompose_example_net_well_known_core() {
+        let uri = Url::parse("coap://example.net/.well-known/core").unwrap();
+
+        let opt_ref = {
+            let mut opts = Options::new();
+            opts.push(UriHost::new("example.net".to_string()));
+            opts.push(UriPath::new(".well-known".to_string()));
+            opts.push(UriPath::new("core".to_string()));
+            opts
+        };
+
+        let (endpoint, options) = decompose(&uri).unwrap();
+
+        assert_eq!(endpoint, Endpoint::Unresolved("example.net".to_string(), 5683));
+        assert_eq!(options, opt_ref);
+    }
+
+    #[test]
+    fn uri_decompose_punny_unicode() {
+        let uri = Url::parse(
+            "coap://xn--18j4d.example/%E3%81%93%E3%82%93%E3%81%AB%E3%81%A1%E3%81%AF"
+        ).unwrap();
+
+        let opt_ref = {
+            let mut opts = Options::new();
+            opts.push(UriHost::new("xn--18j4d.example".to_string()));
+            opts.push(UriPath::new("こんにちは".to_string()));
+            opts
+        };
+
+        let (endpoint, options) = decompose(&uri).unwrap();
+
+        assert_eq!(endpoint, Endpoint::Unresolved("xn--18j4d.example".to_string(), 5683));
+        assert_eq!(options, opt_ref);
+    }
+
+    #[test]
+    fn uri_decompose_port_evil() {
+        // TODO: There's a bug in the url crate, it won't parse out an ipv4 address.
+        //       Revert this once that is fixed.
+        //let uri = Url::parse("coap://198.51.100.1:61616//%2F//?%2F%2F&?%26").unwrap();
+        let uri = Url::parse("coap://[::ffff:198.51.100.1]:61616//%2F//?%2F%2F&?%26").unwrap();
+
+        //let sa_ref = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 1)), 61616);
+        let sa_ref = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0,0,0,0,0,0xffff,0xc633,0x6401)), 61616);
+        let opt_ref = {
+            let mut opts = Options::new();
+            opts.push(UriPath::new("".to_string()));
+            opts.push(UriPath::new("/".to_string()));
+            opts.push(UriPath::new("".to_string()));
+            opts.push(UriPath::new("".to_string()));
+            opts.push(UriQuery::new("//".to_string()));
+            opts.push(UriQuery::new("?&".to_string()));
+            opts
+        };
+
+        let (endpoint, options) = decompose(&uri).unwrap();
+
+        assert_eq!(endpoint, Endpoint::Resolved(sa_ref));
+        assert_eq!(options, opt_ref);
     }
 }
