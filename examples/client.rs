@@ -8,7 +8,7 @@ use futures::Future;
 use futures::future::ok;
 
 fn main() {
-    let request = Client::get("coap://coap.sh/ip")
+    let mut request = Client::get("coap://coap.sh/ip")
         .unwrap()
         .send()
         .and_then(|response| {
