@@ -8,3 +8,5 @@ matrix:
   allow_failures:
     - rust: nightly
   fast_finish: true
+script:
+  - RUSTFLAGS="-D warnings" cargo test --verbose --all
