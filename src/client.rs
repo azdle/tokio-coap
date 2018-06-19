@@ -5,6 +5,7 @@ use message::{Message, Code};
 use message::option::{Option, Options, UriPath, UriHost, UriQuery};
 
 use std::borrow::Cow;
+use std::net::Ipv4Addr;
 use std::time::{Duration, Instant};
 
 use futures::prelude::*;
@@ -55,9 +56,23 @@ fn decompose(url: &Url) -> Result<(Endpoint, Options), UrlError> {
     // Step 5
     let endpoint = match url.host().ok_or(UrlError::NonAbsolutePath)? {
         Host::Domain(domain) => {
-            let host = domain.to_lowercase();
-            options.push(UriHost::new(host.clone()));
-            Endpoint::Unresolved(host, port)
+            // ! gross hack warning !
+            // The URL standard from whatwg (which the url crate follows) specifies that you try to
+            // parse an IPv6 address no matter whatm but you only try to parse an IPv4 address from
+            // a set of "special" url schemes that it defines. *Shockingly* coap isn't one of them.
+            // See https://url.spec.whatwg.org/#host-parsing
+            // and https://url.spec.whatwg.org/#url-miscellaneous
+            //
+            // This forces us to try to parse any domain name as an IPv4 address here to comply
+            // with the coap spec.
+
+            if let Ok(ip) = domain.parse::<Ipv4Addr>() {
+                Endpoint::Resolved((ip, port).into())
+            } else {
+                let host = domain.to_lowercase();
+                options.push(UriHost::new(host.clone()));
+                Endpoint::Unresolved(host, port)
+            }
         },
         Host::Ipv4(ip) => Endpoint::Resolved((ip, port).into()),
         Host::Ipv6(ip) => Endpoint::Resolved((ip, port).into()),
@@ -182,8 +197,7 @@ mod tests {
     use endpoint::Endpoint;
     use message::option::{Option, Options, UriHost, UriPath, UriQuery};
 
-    // TODO: See below
-    use std::net::{IpAddr, /*Ipv4Addr,*/ Ipv6Addr, SocketAddr};
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
     use url::Url;
 
@@ -265,13 +279,9 @@ mod tests {
 
     #[test]
     fn uri_decompose_port_evil() {
-        // TODO: There's a bug in the url crate, it won't parse out an ipv4 address.
-        //       Revert this once that is fixed.
-        //let uri = Url::parse("coap://198.51.100.1:61616//%2F//?%2F%2F&?%26").unwrap();
-        let uri = Url::parse("coap://[::ffff:198.51.100.1]:61616//%2F//?%2F%2F&?%26").unwrap();
+        let uri = Url::parse("coap://198.51.100.1:61616//%2F//?%2F%2F&?%26").unwrap();
 
-        //let sa_ref = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 1)), 61616);
-        let sa_ref = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0,0,0,0,0,0xffff,0xc633,0x6401)), 61616);
+        let sa_ref = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 1)), 61616);
         let opt_ref = {
             let mut opts = Options::new();
             opts.push(UriPath::new("".to_string()));
