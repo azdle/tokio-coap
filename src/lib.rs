@@ -7,7 +7,7 @@ extern crate tokio;
 extern crate tokio_io;
 extern crate tokio_dns;
 extern crate bytes;
-extern crate smallvec;
+extern crate arrayvec;
 #[macro_use]
 extern crate log;
 extern crate url;
