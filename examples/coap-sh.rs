@@ -23,7 +23,7 @@ fn main() {
 
     let (sink, stream) = UdpFramed::new(sock, CoapCodec).split();
 
-    let stream = stream.filter_map(|(mut request, addr)| {
+    let stream = stream.filter_map(|(request, addr)| {
         info!("--> {:?}", request);
 
         match request.mtype {
