@@ -13,10 +13,7 @@ impl Encoder for CoapCodec {
     type Error = Error;
 
     fn encode(&mut self, msg: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let bytes = msg.to_bytes().unwrap();
-        dst.extend(bytes);
-
-        Ok(())
+        msg.encode_to(dst).map_err(|e| e.into())
     }
 }
 
@@ -25,7 +22,7 @@ impl Decoder for CoapCodec {
     type Error = Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        match Message::from_bytes(&buf) {
+        match Message::decode_from(&buf) {
             Ok(msg) => Ok(Some(msg)),
             Err(_) => Ok(None),
         }

@@ -2,6 +2,7 @@ pub mod option;
 
 use self::option::Options;
 
+use bytes::BufMut;
 use arrayvec::ArrayVec;
 
 #[derive(PartialEq, Eq, Debug)]
@@ -217,7 +218,7 @@ impl Message {
         self
     }
 
-    pub fn from_bytes(pkt: &[u8]) -> Result<Message, Error> {
+    pub fn decode_from(pkt: &[u8]) -> Result<Message, Error> {
         let mut i: usize;
 
         if pkt.len() < 4 {
@@ -314,46 +315,29 @@ impl Message {
         })
     }
 
-    pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        if self.token.len() > 8 {
-            return Err(Error::MessageFormat);
+    pub fn encode_to<B: BufMut>(&self, buf: &mut B) -> Result<(), Error> {
+        buf.put_u8((self.version << 6) | self.mtype.as_u8() << 4 | self.token.len() as u8);
+        buf.put_u8(self.code.as_u8());
+        buf.put_u16_be(self.mid);
+        buf.put_slice(&self.token);
+
+        let mut last_option_number = 0;
+
+        for (number, bytes) in self.options.iter() {
+            if number >= 65000 {
+                return Err(Error::MessageFormat);
+            }
+
+            buf.put_slice(&option::build_header(number, bytes, &mut last_option_number));
+            buf.put_slice(bytes);
         }
-
-        // estimate packet size
-        let mut est_pkt_size: usize = 4 + self.token.len() + 1 + 1 + self.payload.len();
-
-         for (number, bytes) in self.options.iter() {
-             est_pkt_size += 2 + bytes.len() as usize;
-
-             if number >= 65000 {
-                 return Err(Error::MessageFormat);
-             }
-         }
-
-        let mut pkt = Vec::with_capacity(est_pkt_size);
-
-        pkt.push((self.version << 6) | self.mtype.as_u8() << 4 | self.token.len() as u8);
-        pkt.push(self.code.as_u8());
-        pkt.push((self.mid >> 8) as u8);
-        pkt.push((self.mid & 0xFF) as u8);
-
-        for byte in &self.token {
-            pkt.push(*byte)
-        }
-
-         let mut last_option_number = 0;
-
-         for (number, bytes) in self.options.iter() {
-             pkt.extend(option::build_header(number, bytes, &mut last_option_number).iter());
-             pkt.extend(bytes);
-         }
 
         if self.payload.len() > 0 {
-            pkt.push(0xFF);
-            pkt.extend(&self.payload);
+            buf.put_u8(0xFF);
+            buf.put_slice(&self.payload);
         }
 
-        Ok(pkt)
+        Ok(())
     }
 }
 
@@ -362,7 +346,7 @@ impl Message {
 fn test_msg_parse_empty() {
     let ref_bin = [64, 0, 0, 0];
 
-    let msg = Message::from_bytes(&ref_bin).unwrap();
+    let msg = Message::decode_from(&ref_bin).unwrap();
 
     assert!(msg.version == 1);
     assert!(msg.mtype == Mtype::Confirmable);
@@ -388,7 +372,8 @@ fn test_msg_serialize_empty() {
         payload: vec![],
     };
 
-    let test_bin = msg.to_bytes().unwrap();
+    let mut test_bin = vec![];
+    msg.encode_to(&mut test_bin).unwrap();
 
     assert!(test_bin == ref_bin);
 }
@@ -397,7 +382,7 @@ fn test_msg_serialize_empty() {
 fn test_msg_parse_empty_con_with_token() {
     let ref_bin = [66, 0, 0, 0, 37, 42];
 
-    let msg = Message::from_bytes(&ref_bin).unwrap();
+    let msg = Message::decode_from(&ref_bin).unwrap();
 
     assert!(msg.version == 1);
     assert!(msg.mtype == Mtype::Confirmable);
@@ -414,7 +399,7 @@ fn test_msg_parse_empty_con_with_token() {
 fn test_msg_parse_get_con() {
     let ref_bin = [0x41, 0x01, 0x00, 0x37, 0x99, 0xFF, 0x01, 0x02];
 
-    let msg = Message::from_bytes(&ref_bin).unwrap();
+    let msg = Message::decode_from(&ref_bin).unwrap();
 
     assert!(msg.version == 1);
     assert!(msg.mtype == Mtype::Confirmable);
@@ -442,7 +427,7 @@ fn test_msg_parse_get_con_with_opts() {
     opts.push(UriPath::new("temp".to_owned()));
     opts.push(UriQuery::new("a32c85ba9dda45823be416246cf8b433baa068d7".to_owned()));
 
-    let msg = Message::from_bytes(&ref_bin).unwrap();
+    let msg = Message::decode_from(&ref_bin).unwrap();
 
     assert!(msg.version == 1);
     assert!(msg.mtype == Mtype::Confirmable);
@@ -480,7 +465,8 @@ fn test_msg_encode_get_con_with_opts() {
         payload: vec![0x39, 0x39],
     };
 
-    let test_bin = msg.to_bytes().unwrap();
+    let mut test_bin = vec![];
+    msg.encode_to(&mut test_bin).unwrap();
 
     assert!(test_bin.len() == ref_bin.len());
 
