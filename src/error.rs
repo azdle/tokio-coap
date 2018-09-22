@@ -1,4 +1,5 @@
-use message::Error as MessageError;
+use futures::sync::mpsc::SendError;
+use message::{Error as MessageError, Message};
 use std::io::Error as IoError;
 use std::str::Utf8Error;
 use url::ParseError;
@@ -29,6 +30,8 @@ pub enum Error {
     Message(MessageError),
     /// The system IO returned an error.
     Io(IoError),
+    /// 
+    MessageSend(SendError<::message::Message>),
     /// Error when attempting to parse a url
     Url(UrlError),
 
@@ -51,5 +54,11 @@ impl From<MessageError> for Error {
 impl From<IoError> for Error {
     fn from(e: IoError) -> Error {
         Error::Io(e)
+    }
+}
+
+impl From<SendError<Message>> for Error {
+    fn from(e: SendError<Message>) -> Error {
+        Error::MessageSend(e)
     }
 }

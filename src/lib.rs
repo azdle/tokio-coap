@@ -18,6 +18,7 @@ pub mod codec;
 pub mod endpoint;
 pub mod error;
 pub mod message;
+pub mod socket;
 
 pub use client::Client;
 pub use endpoint::Endpoint;

@@ -4,7 +4,7 @@ use self::option::Options;
 
 use arrayvec::ArrayVec;
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Message {
     pub version: u8,
     pub mtype: Mtype,
@@ -23,12 +23,12 @@ pub enum Error {
     UnrecognizedCriticalOption, // TODO: use
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 #[repr(u8)]
 pub enum Mtype {
     Confirmable,
     NonConfirmable,
-    Acknowledgement,
+    Acknowledgment,
     Reset,
 }
 
@@ -37,7 +37,7 @@ impl Mtype {
         match raw_mtype & 0x03 {
             0 => Mtype::Confirmable,
             1 => Mtype::NonConfirmable,
-            2 => Mtype::Acknowledgement,
+            2 => Mtype::Acknowledgment,
             3 => Mtype::Reset,
             _ => unreachable!(),
         }
@@ -47,13 +47,13 @@ impl Mtype {
         match *self {
             Mtype::Confirmable => 0,
             Mtype::NonConfirmable => 1,
-            Mtype::Acknowledgement => 2,
+            Mtype::Acknowledgment => 2,
             Mtype::Reset => 3,
         }
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Code {
     Empty,
     Get,
@@ -180,7 +180,7 @@ impl Message {
     pub fn new_reply(&self) -> Self {
         Self::new().with_token(&self.token)
                    .with_mid(self.mid)
-                   .with_mtype(Mtype::Acknowledgement)
+                   .with_mtype(Mtype::Acknowledgment)
     }
 
     pub fn with_mtype(mut self, mtype: Mtype) -> Self {

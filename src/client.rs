@@ -1,16 +1,18 @@
-use codec::CoapCodec;
 use Endpoint;
+
+use socket::{CoapSocket, SocketHandle};
+
 use error::{Error, UrlError};
 use message::{Message, Code};
 use message::option::{Option, Options, UriPath, UriHost, UriQuery};
 
 use std::borrow::Cow;
 use std::net::Ipv4Addr;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use futures::prelude::*;
 
-use tokio::net::{UdpSocket, UdpFramed};
+use tokio;
 use tokio::util::FutureExt;
 
 use percent_encoding::percent_decode;
@@ -18,13 +20,6 @@ use url::Url;
 
 /// An alias for the futures produced by this library.
 pub type IoFuture<T> = Box<Future<Item = T, Error = Error> + Send>;
-
-pub struct Client {
-    /// the remote endpoint to contact
-    endpoint: Endpoint,
-    /// the message to be sent
-    msg: Message,
-}
 
 fn depercent(s: &str) -> Result<String, UrlError> {
     percent_decode(s.as_bytes())
@@ -34,7 +29,7 @@ fn depercent(s: &str) -> Result<String, UrlError> {
 }
 
 /// RFC 7252: 6.4.  Decomposing URIs into Options
-fn decompose(url: &Url) -> Result<(Endpoint, Options), UrlError> {
+pub fn decompose(url: &Url) -> Result<(Endpoint, Options), UrlError> {
     use url::Host;
 
     let mut options = Options::new();
@@ -96,14 +91,30 @@ fn decompose(url: &Url) -> Result<(Endpoint, Options), UrlError> {
     Ok((endpoint, options))
 }
 
+pub struct Client {
+    /// the remote endpoint to contact
+    pub endpoint: Endpoint,
+    /// the message to be sent
+    pub msg: Message,
+    /// the internal CoAP socket
+    pub socket: SocketHandle,
+}
+
 impl Client {
-    pub fn new() -> Client {
+    pub fn new(handle: SocketHandle) -> Client {
+        //let mut socket = CoapSocket::bind(&"0.0.0.0:0".parse().unwrap()).unwrap();
+        //let handle = socket.handle();
+
+        //tokio::spawn(socket);
+
         Client {
             endpoint: Endpoint::Unset,
             msg: Message::new(),
+            socket: handle,
         }
     }
 
+    /*
     pub fn get(url: &str) -> Result<Client, Error> {
         let mut client = Client::new();
         let url = Url::parse(url).map_err(UrlError::Parse)?;
@@ -115,6 +126,7 @@ impl Client {
 
         Ok(client)
     }
+    */
 
     pub fn set_endpoint(&mut self, endpoint: Endpoint) {
         self.endpoint = endpoint;
@@ -127,45 +139,35 @@ impl Client {
     }
 
     pub fn send(self) -> IoFuture<Message> {
-        let local_addr = "0.0.0.0:0".parse().unwrap();
+        let Self { endpoint, msg, socket } = self;
 
-        let Self { endpoint, msg } = self;
-        let client_request = endpoint
-            .resolve()
-            .and_then(move |remote_addr| {
-                let sock = UdpSocket::bind(&local_addr).unwrap();
-
-                let framed_socket = UdpFramed::new(sock, CoapCodec);
-
-                info!("sending request");
-                let client =  framed_socket
-                    .send((msg, remote_addr))
-                    .and_then(|sock| {
-                        let timeout_time = Instant::now() + Duration::from_millis(1000);
-                        sock
-                            .filter_map(|(msg, _addr)| {
-                                match msg.code {
-                                    Code::Content => {
-                                        Some(msg)
-                                    },
-                                    _ => {
-                                        warn!("Unexpeted Response");
-                                        None
-                                    },
-                                }
-                            })
-                            .take(1)
-                            .collect()
-                            .map(|mut list| {
-                                list.pop().expect("list of one somehow had nothing to pop")
-                            })
-                            .deadline(timeout_time)
-                            .map_err(|_| Error::Timeout)
-                    });
-
-                client
-            }
-        );
+        info!("sending request");
+        let client_request = socket.connect(endpoint)
+            .and_then(move |mut connection| {
+                connection.request(msg)
+                    .filter_map(|msg| {
+                        match msg.code {
+                            Code::Content => {
+                                println!("Got Response: {:?}", msg);
+                                Some(msg)
+                            },
+                            _ => {
+                                println!("Unexpeted Response: {:?}", msg);
+                                //None
+                                Some(msg)
+                            },
+                        }
+                    })
+                    .map(|x| {println!("item: {:?}", x); x})
+                    .take(1)
+                    .collect()
+                    .map(|mut list| {
+                        debug!("list is {:?}", list);
+                        list.pop().expect("list of one somehow had nothing to pop")
+                    })
+                    .timeout(Duration::from_secs(5))
+                    .map_err(|_| Error::Timeout)
+            });
 
         Box::new(client_request)
     }

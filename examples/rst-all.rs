@@ -29,7 +29,7 @@ fn main() {
             Mtype::Confirmable | Mtype::NonConfirmable => {
                 let reply = Message {
                     version: 1,
-                    mtype: Mtype::Acknowledgement,
+                    mtype: Mtype::Acknowledgment,
                     code: Code::NotImplemented,
                     mid: request.mid,
                     token: request.token.clone(),

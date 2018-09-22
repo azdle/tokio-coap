@@ -5,7 +5,7 @@ use message::Error;
 
 use std::option::Option as StdOption;
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Options {
     pub map: BTreeMap<u16, Vec<Vec<u8>>>,
 }

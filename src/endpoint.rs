@@ -5,14 +5,12 @@ use futures::prelude::*;
 use futures::future;
 use futures::sync::{mpsc, oneshot};
 
-use tokio::net::{UdpFramed, UdpSocket};
-
 use tokio_dns;
 
 use error::Error;
 use client::{/*Client,*/ IoFuture};
-use codec::CoapCodec;
-use message::Message;
+use message::{Message, Mtype};
+use socket::CoapSocket;
 
 #[derive(Debug, PartialEq)]
 pub enum Endpoint {
@@ -43,173 +41,109 @@ enum Handlers {
 }
 
 enum Responder {
-    Single(oneshot::Receiver<(Message, SocketAddr)>),
-    Multiple(mpsc::UnboundedReceiver<(Message, SocketAddr)>),
+    Single(oneshot::Sender<(Message, SocketAddr)>),
+    Multiple(mpsc::UnboundedSender<(Message, SocketAddr)>),
 }
 
+/// A convenient interface for easily making one or more client style requests.
 pub struct Client {
+    socket: CoapSocket,
     request_sender: mpsc::UnboundedSender<((Message, SocketAddr), Responder)>,
 }
 
+impl Client {
+    pub fn request(&self, msg: Message, addr: SocketAddr) -> oneshot::Receiver<(Message, SocketAddr)> {
+        let (sender, receiver) = oneshot::channel();
+        let responder = Responder::Single(sender);
+
+        self.request_sender.clone().unbounded_send(((msg, addr), responder));
+
+        receiver
+    }
+}
+
+pub struct Response {
+    response_receiver: mpsc::UnboundedReceiver<Message>,
+}
+
+impl Stream for Response {
+    type Item = Message;
+    type Error = Error;
+
+    fn poll(&mut self) -> Result<Async<Option<Self::Item>>, Self::Error> {
+        let result = self.response_receiver.poll().map_err(|()| unreachable!());
+        trace!("Response::poll -> {:?}", result);
+        result
+    }
+}
+
+#[derive(Debug)]
 pub struct Request {
     msg: Message,
     retry_count: u8,
     retry_timeout: (), // not sure if this should live here
+    response_sender: mpsc::UnboundedSender<Message>,
 }
 
+/// While UDP is a connectionless protocol, this library makes use of so-called "connections",
+/// which in logically just a pair of endpoints (local, remote), where the local endpoint is taken
+/// care of by the Socket and then filters packets (in userspace) to individual connections. This
+/// provides a convenient interface for dealing with individual remote devices.
+#[derive(Debug)]
 pub struct Connection {
-    remote: Endpoint,
-    next_mid: u16, // currenly assumes this doesn't wrap for at least EXCHANGE_LIFETIME
+    receiver: mpsc::UnboundedReceiver<(Message, SocketAddr)>,
+    sender: mpsc::UnboundedSender<(Message, SocketAddr)>,
+    remote: SocketAddr,
+    next_mid: u16, // currently assumes this doesn't wrap for at least EXCHANGE_LIFETIME
     requests: Vec<Request>,
 }
 
-enum State {
-    Idle,
-    Send(((Message, SocketAddr), Responder)),
-    Flush(Responder),
-}
-
-/// A local endpoint. This handles all traffic passing through the local udp endpoint, allowing
-/// zero or more `Client`s and zero or one `Server`s to share a single local endpoint.
-pub struct Socket {
-    socket: UdpFramed<CoapCodec>,
-    state: State,
-    connections: Vec<Connection>,
-    request_sender: mpsc::UnboundedSender<((Message, SocketAddr), Responder)>,
-    request_receiver: mpsc::UnboundedReceiver<((Message, SocketAddr), Responder)>,
-}
-
-impl Socket {
-    /// Create a new local endpoint from the given `UdpSocket`.
-    pub fn new(socket: UdpSocket) -> Socket {
-        let socket = UdpFramed::new(socket, CoapCodec);
-        let (request_sender, request_receiver) = mpsc::unbounded();
-
-        Socket {
-            socket,
-            state: State::Idle,
-            connections: Vec::new(),
-            request_sender,
-            request_receiver
+impl Connection {
+    pub fn new(remote: SocketAddr) -> Connection {
+        let (sender, receiver) = mpsc::unbounded();
+        Connection {
+            receiver,
+            // HACK
+            sender,
+            remote,
+            next_mid: 0, //TODO: Randomize
+            requests: Vec::new(),
         }
     }
 
-    /// Create a new local endpoint bound to the given `SocketAddr`.
-    pub fn bind(addr: &SocketAddr) -> Result<Socket, Error> {
-        let socket = UdpSocket::bind(addr)?;
-        Ok(Self::new(socket))
+    pub fn handle_msg(&self, msg: Message) {
+        println!("From {:?} message: {:?}", self.remote, msg);
+
+        match msg.mtype {
+            Mtype::Confirmable => (),
+            Mtype::NonConfirmable => (),
+            Mtype::Acknowledgment => (),
+            Mtype::Reset => (),
+        }
+
+        // HACK
+        self.requests[0].response_sender.unbounded_send(msg).unwrap();
     }
 
-    pub fn client(&self) -> Client {
-        Client {
-            request_sender: self.request_sender.clone()
+    pub fn request(&mut self, msg: Message) -> Response {
+        let (response_sender, response_receiver) = mpsc::unbounded();
+
+        let request = Request {
+            msg,
+            retry_count: 0,
+            retry_timeout: (), // not sure if this should live here
+            response_sender,
+        };
+
+        self.requests.push(request);
+
+        Response {
+            response_receiver
         }
+    }
+
+    pub fn remote_addr(&self) -> &SocketAddr {
+        &self.remote
     }
 }
 
-
-/// `Socket` implementes a future that is intended to be spawned as a task which should never then
-/// resolve.
-impl Future for Socket {
-    type Item = ();
-    type Error = ();
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        use std::mem;
-
-        loop {
-            let state = mem::replace(&mut self.state, State::Idle);
-            let (new_state, cont) = match state {
-                State::Idle => {
-                    // this section can't change our state from idle since we can always push to an
-                    // `UnboundedSender` (or we fail immediately)
-                    match self.socket.poll() {
-                        Ok(Async::Ready(Some((msg, responder)))) => {
-                            trace!("socket was ready");
-
-                            // TODO: Sort Responses back to Requester & new requests to server
-                            println!("Got msg: {:?}", msg);
-                        },
-                        Ok(Async::Ready(None)) => {
-                            warn!("socket stream has ended");
-                            panic!("UdpFramed Stream ended");
-                        },
-                        Ok(Async::NotReady) => {
-                            trace!("socket not ready");
-                        },
-                        Err(e) => {
-                            error!("socket produced error: {:?}", e);
-                            // TODO: Handle Error Somehow
-                            panic!("unhandled error in error-less future");
-                        }
-                    };
-
-                    match self.request_receiver.poll() {
-                        Ok(Async::Ready(Some((req, responder)))) => {
-                            trace!("req channel was ready");
-
-                            // TODO: Send off Requests & Store Responder
-                            println!("Got request: {:?}", req);
-                            (State::Send((req, responder)), true)
-                        },
-                        Ok(Async::Ready(None)) => {
-                            warn!("req channel stream has ended");
-                            panic!("UdpFramed Stream ended");
-                        },
-                        Ok(Async::NotReady) => {
-                            trace!("req channel not ready");
-                            (State::Idle, false)
-                        },
-                        Err(e) => {
-                            error!("req channel produced error: {:?}", e);
-                            // TODO: Handle Error Somehow
-                            panic!("unhandled error in error-less future");
-                        }
-                    }
-                },
-                State::Send((req, responder)) => {
-                    match self.socket.start_send(req) {
-                        Ok(AsyncSink::Ready) => {
-                            trace!("req sent");
-                            (State::Flush(responder), true)
-                        },
-                        Ok(AsyncSink::NotReady(req)) => {
-                            trace!("socket was not ready to send");
-
-                            (State::Send((req, responder)), false)
-                        },
-                        Err(e) => {
-                            error!("sending on socekt produced error: {:?}", e);
-                            // TODO: Handle Error Somehow
-                            panic!("unhandled error in error-less future");
-                        }
-                    }
-                },
-                State::Flush(responder) => {
-                    match self.socket.poll_complete() {
-                        Ok(Async::Ready(())) => {
-                            trace!("req flushed");
-                            // TODO: save responder
-                            (State::Idle, true)
-                        },
-                        Ok(Async::NotReady) => {
-                            trace!("socket was not ready to flush");
-                            (State::Flush(responder), false)
-                        },
-                        Err(e) => {
-                            error!("sending on socket produced error: {:?}", e);
-                            // TODO: Handle Error Somehow
-                            panic!("unhandled error in error-less future");
-                        }
-                    }
-                },
-            };
-
-            self.state = new_state;
-
-            if !cont {
-                return Ok(Async::NotReady);
-            }
-        }
-    }
-}
