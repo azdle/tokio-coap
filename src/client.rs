@@ -144,7 +144,7 @@ impl Client {
         info!("sending request");
         let client_request = socket.connect(endpoint)
             .and_then(move |mut connection| {
-                connection.request(msg)
+                connection.send(msg)
                     .filter_map(|msg| {
                         match msg.code {
                             Code::Content => {

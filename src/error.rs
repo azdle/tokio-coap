@@ -1,3 +1,4 @@
+use futures::Canceled;
 use futures::sync::mpsc::SendError;
 use message::{Error as MessageError, Message};
 use std::io::Error as IoError;
@@ -34,6 +35,8 @@ pub enum Error {
     MessageSend(SendError<::message::Message>),
     /// Error when attempting to parse a url
     Url(UrlError),
+    ///
+    Canceled(Canceled),
 
     #[doc(hidden)]
     __AlwaysWildcardMatchThisListWillChange,

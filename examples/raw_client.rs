@@ -3,18 +3,18 @@ extern crate tokio_coap;
 extern crate tokio;
 extern crate futures;
 extern crate url;
+#[macro_use]
+extern crate log;
 
-use tokio_coap::Client;
-use tokio_coap::client::decompose;
+use tokio_coap::endpoint::Endpoint;
+use tokio_coap::message::Message;
 use tokio_coap::socket::CoapSocket;
 
 use futures::Future;
-use futures::future::ok;
 use futures::Stream;
 
 use tokio::runtime::Runtime;
 
-use url::Url;
 
 fn main() {
     if ::std::env::var("RUST_LOG").is_err() {
@@ -24,54 +24,28 @@ fn main() {
     pretty_env_logger::init();
 
     let mut runtime = Runtime::new().expect("failed to create tokio runtime");
-	let executor = runtime.executor();
 
     let mut socket = CoapSocket::bind(&"0.0.0.0:0".parse().unwrap()).unwrap();
     let handle = socket.handle();
 
     println!("listening on {}", socket.local_addr().unwrap());
 
-    executor.spawn(socket);
+    runtime.spawn(socket);
 
-    let mut client = Client::new(handle);
-
-    let url = Url::parse("coap://coap.sh/ip").unwrap();
-
-    let (endpoint, options) = decompose(&url).unwrap();
-
-    client.set_endpoint(endpoint);
-    client.msg.options = options;
-
-	let Client { endpoint, msg, socket } = client;
-
-	println!("sending request");
-	let request = socket.connect(endpoint)
-		.and_then(move |mut connection| {
-			connection.request(msg)
-				.map(|x| {println!("item: {:?}", x); x})
-				.take(1)
-				.collect()
-				.map(|mut list| {
-					println!("list is {:?}", list);
-					list.pop().expect("list of one somehow had nothing to pop")
-				})
-		});
-
-    runtime.block_on(request).unwrap();
-
-
-    /*
-    let client = Client::get("coap://coap.sh/ip").unwrap();
-    let request = client.send()
-        .and_then(|response| {
-            println!("response: {}", String::from_utf8_lossy(&response.payload));
-            ok(())
-        })
-        .or_else(|e| {
-            println!("error in request: {:?}", e);
-            ok(())
+    let request = handle.connect(Endpoint::Unresolved("127.0.0.1".into(), 5683))
+        .and_then(|mut connection| {
+            info!("Connected: {:?}", connection);
+            let request = Message::new();
+            let r = connection.send(request).take(1).for_each(|response| {
+                info!("got response: {:?}", response);
+                Ok(())
+            }).and_then(|_| {
+                info!("responses finished");
+                Ok(())
+            });
+            info!("end of connect handler");
+            return r;
         });
 
-    tokio::run(request);
-    */
+    runtime.block_on(request).expect("failed to run request on runtime");
 }
